@@ -1,2 +1,1 @@
-# onboarding-project-alpha
-Onboarding project repository
+# Experimentations with VGGT
