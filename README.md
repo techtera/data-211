@@ -1,1 +1,1 @@
-# Experimentations with VGGT
+# Dikshit: Experimentations with VGGT
