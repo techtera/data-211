@@ -1,0 +1,7 @@
+images/
+*.pt
+*.pth
+.env
+*.jpg
+*.png
+*.jpeg
