@@ -483,6 +483,8 @@ class DPTHead(nn.Module):
             ################################################################
 
             out.append(x)
+            print(f"Pyramid Level {dpt_idx}")
+            print(x.shape)
 
             dpt_idx += 1
 
@@ -499,6 +501,8 @@ class DPTHead(nn.Module):
         ####################################################################
 
         mask_logits = self.segformer_decoder(out)
+        print("\nDecoder Output Shape")
+        print(mask_logits.shape)
 
         ####################################################################
         # SegFormer predicts masks at the highest pyramid resolution
@@ -513,7 +517,8 @@ class DPTHead(nn.Module):
             mode="bilinear",
             align_corners=False,
         )
-
+        print("\nUpsampled Output Shape")
+        print(mask_logits.shape)
         ####################################################################
         # Restore the original batch and temporal dimensions.
         #
