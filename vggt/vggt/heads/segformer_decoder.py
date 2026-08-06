@@ -53,7 +53,7 @@ class SegFormerDecoder(nn.Module):
         self,
         in_channels=[256, 512, 1024, 1024],
         embedding_dim=256,
-        num_classes=1,
+        num_classes=2,
     ):
         super().__init__()
 

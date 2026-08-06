@@ -10,8 +10,7 @@ from huggingface_hub import PyTorchModelHubMixin  # used for model hub
 
 from vggt.models.aggregator import Aggregator
 from vggt.heads.camera_head import CameraHead
-from ....SegFormer.mmseg.models.decode_heads import segformer_head
-from vggt.heads.segformer_head_for_dpt import DPTHead
+from vggt.heads.dpt_head import DPTHead
 from vggt.heads.track_head import TrackHead
 
 
@@ -95,4 +94,3 @@ class VGGT(nn.Module, PyTorchModelHubMixin):
             predictions["images"] = images  # store the images for visualization during inference
 
         return predictions
-
