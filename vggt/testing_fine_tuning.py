@@ -1,104 +1,140 @@
-from huggingface_hub import hf_hub_download
+"""
+Lightweight integration test for the VGGT + SegFormer fine-tuning pipeline.
+
+This script verifies:
+
+1. Dataset
+2. Model
+3. Inference
+4. Training (Loss + Backpropagation)
+"""
+
 import torch
 
-from vggt.models.vggt_modifying import VGGT
-
-print("=" * 80)
-print("Downloading Official Checkpoint")
-print("=" * 80)
-
-# Download official checkpoint
-ckpt_path = hf_hub_download(
-    repo_id="facebook/VGGT-1B",
-    filename="model.safetensors",
+from fine_tuning.config import (
+    DATASET_ROOT,
+    IMAGE_SIZE,
 )
 
-print("Checkpoint:", ckpt_path)
+from fine_tuning.dataset import SegmentationDataset
+from fine_tuning.model_builder import build_model
+from fine_tuning.losses import build_loss
+from fine_tuning.optimizer import build_optimizer
 
-# Load checkpoint
-checkpoint = torch.load(ckpt_path, map_location="cpu")
-checkpoint_keys = set(checkpoint.keys())
 
-print("\nCheckpoint tensors:", len(checkpoint_keys))
+# ============================================================
+# Dataset
+# ============================================================
 
-print("\n" + "=" * 80)
-print("Building Modified Model")
-print("=" * 80)
+print("=" * 60)
+print("Testing Dataset")
+print("=" * 60)
 
-model = VGGT()
-model_keys = set(model.state_dict().keys())
+dataset = SegmentationDataset(
+    root_dir=DATASET_ROOT,
+    image_size=IMAGE_SIZE,
+)
 
-print("Model tensors:", len(model_keys))
+print(f"Dataset Size : {len(dataset)}")
 
-# ------------------------------------------------------------------
-# Compare
-# ------------------------------------------------------------------
+image, mask = dataset[0]
 
-missing = sorted(model_keys - checkpoint_keys)
-unexpected = sorted(checkpoint_keys - model_keys)
-common = sorted(model_keys & checkpoint_keys)
+print(f"Image Shape : {image.shape}")
+print(f"Mask Shape  : {mask.shape}")
+print(f"Mask Labels : {torch.unique(mask)}")
 
-print("\n" + "=" * 80)
-print("Summary")
-print("=" * 80)
+# Add batch and sequence dimensions
+image = image.unsqueeze(0)      # (1,3,H,W)
+image = image.unsqueeze(1)      # (1,1,3,H,W)
 
-print(f"Common Keys      : {len(common)}")
-print(f"Missing Keys     : {len(missing)}")
-print(f"Unexpected Keys  : {len(unexpected)}")
+mask = mask.unsqueeze(0)        # (1,H,W)
 
-# ------------------------------------------------------------------
-# Missing
-# ------------------------------------------------------------------
+print(f"\nInput Image Shape : {image.shape}")
+print(f"Input Mask Shape  : {mask.shape}")
 
-print("\n" + "=" * 80)
-print("Missing Keys")
-print("=" * 80)
 
-if len(missing) == 0:
-    print("None")
-else:
-    for k in missing:
-        print(k)
+# ============================================================
+# Build Model
+# ============================================================
 
-# ------------------------------------------------------------------
-# Unexpected
-# ------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("Building Model")
+print("=" * 60)
 
-print("\n" + "=" * 80)
-print("Unexpected Keys")
-print("=" * 80)
+model = build_model()
 
-if len(unexpected) == 0:
-    print("None")
-else:
-    for k in unexpected:
-        print(k)
 
-# ------------------------------------------------------------------
-# Shape mismatches
-# ------------------------------------------------------------------
+# ============================================================
+# Inference Test
+# ============================================================
 
-print("\n" + "=" * 80)
-print("Checking Shapes")
-print("=" * 80)
+print("\n" + "=" * 60)
+print("Inference Test")
+print("=" * 60)
 
-shape_errors = 0
+model.eval()
 
-model_state = model.state_dict()
+with torch.no_grad():
 
-for k in common:
+    predictions = model(image)
 
-    if checkpoint[k].shape != model_state[k].shape:
+    logits = predictions["mask_logits"]
 
-        shape_errors += 1
+print(f"Output Shape : {logits.shape}")
 
-        print(
-            f"{k}\n"
-            f"Checkpoint: {tuple(checkpoint[k].shape)}\n"
-            f"Model     : {tuple(model_state[k].shape)}\n"
-        )
+print("✓ Inference Successful")
 
-if shape_errors == 0:
-    print("✓ All common tensors have matching shapes.")
 
-print("\nVerification Complete!")
+# ============================================================
+# Training Test
+# ============================================================
+
+print("\n" + "=" * 60)
+print("Training Test")
+print("=" * 60)
+
+model.train()
+
+predictions = model(image)
+
+logits = predictions["mask_logits"]
+
+print(f"Output Shape      : {logits.shape}")
+print(f"Requires Grad     : {logits.requires_grad}")
+
+criterion = build_loss()
+
+loss = criterion(
+    logits,
+    mask,
+)
+
+print(f"Loss : {loss.item():.6f}")
+
+optimizer = build_optimizer(model)
+
+optimizer.zero_grad()
+
+loss.backward()
+
+optimizer.step()
+
+print("✓ Backpropagation Successful")
+
+
+# ============================================================
+# Finished
+# ============================================================
+
+print("\n" + "=" * 60)
+print("PIPELINE VERIFIED")
+print("=" * 60)
+
+print("✓ Dataset")
+print("✓ Model")
+print("✓ Inference")
+print("✓ Loss")
+print("✓ Optimizer")
+print("✓ Backpropagation")
+
+print("\n🚀 Everything is ready for fine-tuning!")

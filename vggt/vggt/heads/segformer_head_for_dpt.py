@@ -520,22 +520,9 @@ class DPTHead(nn.Module):
         print("\nUpsampled Output Shape")
         print(mask_logits.shape)
         ####################################################################
-        # Restore the original batch and temporal dimensions.
-        #
-        # Before:
-        #
         #   [B*S, C, H, W]
-        #
-        # After:
-        #
-        #   [B, S, C, H, W]
         ####################################################################
 
-        mask_logits = mask_logits.view(
-            B,
-            S,
-            *mask_logits.shape[1:]
-        )
 
         return mask_logits
     
