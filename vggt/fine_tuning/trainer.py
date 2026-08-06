@@ -4,7 +4,12 @@ Training utilities for SegFormer fine-tuning.
 
 import torch.nn.functional as F
 
-from .config import DEVICE, LOG_EVERY
+from .config import (
+    DEVICE,
+    LOG_EVERY,
+)
+
+from .validate import validate
 
 from .checkpoints import (
     save_latest_checkpoint,
@@ -40,17 +45,18 @@ def train_one_epoch(
     for batch_idx, (images, masks) in enumerate(dataloader):
 
         # ----------------------------------------------------
-        # Move batch to device
+        # Move to device
         # ----------------------------------------------------
 
         images = images.to(DEVICE)
         masks = masks.to(DEVICE)
 
-        # VGGT expects (B, S, C, H, W)
+        # VGGT expects (B,S,C,H,W)
+
         images = images.unsqueeze(1)
 
         # ----------------------------------------------------
-        # Forward Pass
+        # Forward
         # ----------------------------------------------------
 
         optimizer.zero_grad()
@@ -58,10 +64,6 @@ def train_one_epoch(
         predictions = model(images)
 
         logits = predictions["mask_logits"]
-
-        # ----------------------------------------------------
-        # Resize predictions to match ground-truth mask
-        # ----------------------------------------------------
 
         logits = F.interpolate(
             logits,
@@ -76,7 +78,7 @@ def train_one_epoch(
         )
 
         # ----------------------------------------------------
-        # Backward Pass
+        # Backward
         # ----------------------------------------------------
 
         loss.backward()
@@ -86,7 +88,7 @@ def train_one_epoch(
         running_loss += loss.item()
 
         # ----------------------------------------------------
-        # Batch Logging
+        # Logging
         # ----------------------------------------------------
 
         if (
@@ -125,17 +127,17 @@ def train(
 
     history = []
 
-    best_loss = float("inf")
+    best_iou = -1.0
 
     print("\nStarting Fine-Tuning...\n")
 
     for epoch in range(1, num_epochs + 1):
 
-        # ----------------------------------------------------
+        # ====================================================
         # Training
-        # ----------------------------------------------------
+        # ====================================================
 
-        epoch_loss = train_one_epoch(
+        train_loss = train_one_epoch(
             model=model,
             dataloader=train_loader,
             criterion=criterion,
@@ -143,23 +145,29 @@ def train(
             epoch=epoch,
         )
 
-        history.append(epoch_loss)
+        history.append(train_loss)
 
-        # ----------------------------------------------------
-        # Validation Placeholder
-        # ----------------------------------------------------
+        # ====================================================
+        # Validation
+        # ====================================================
+
+        val_results = None
 
         if val_loader is not None:
-            # Validation loop will be implemented later.
-            pass
 
-        # ----------------------------------------------------
-        # TensorBoard Logging
-        # ----------------------------------------------------
+            val_results = validate(
+                model=model,
+                dataloader=val_loader,
+                criterion=criterion,
+            )
+
+        # ====================================================
+        # TensorBoard
+        # ====================================================
 
         writer.add_scalar(
             "Loss/Train",
-            epoch_loss,
+            train_loss,
             epoch,
         )
 
@@ -169,42 +177,109 @@ def train(
             epoch,
         )
 
-        # ----------------------------------------------------
+        if val_results is not None:
+
+            writer.add_scalar(
+                "Loss/Validation",
+                val_results["loss"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/PixelAccuracy",
+                val_results["pixel_accuracy"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/Dice",
+                val_results["dice"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/MeanIoU",
+                val_results["mean_iou"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/Precision",
+                val_results["precision"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/Recall",
+                val_results["recall"],
+                epoch,
+            )
+
+            writer.add_scalar(
+                "Metrics/F1",
+                val_results["f1"],
+                epoch,
+            )
+
+        # ====================================================
         # Latest Checkpoint
-        # ----------------------------------------------------
+        # ====================================================
 
         save_latest_checkpoint(
             model=model,
             optimizer=optimizer,
             epoch=epoch,
-            loss=epoch_loss,
+            loss=train_loss,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Best Checkpoint
-        # ----------------------------------------------------
+        # ====================================================
 
-        if epoch_loss < best_loss:
+        if val_results is not None:
 
-            best_loss = epoch_loss
+            if val_results["mean_iou"] > best_iou:
 
-            save_best_checkpoint(
-                model=model,
-                optimizer=optimizer,
-                epoch=epoch,
-                loss=epoch_loss,
-            )
+                best_iou = val_results["mean_iou"]
 
-        # ----------------------------------------------------
-        # Save Every N Epochs
-        # ----------------------------------------------------
+                save_best_checkpoint(
+                    model=model,
+                    optimizer=optimizer,
+                    epoch=epoch,
+                    loss=val_results["loss"],
+                )
+
+        # ====================================================
+        # Epoch Checkpoint
+        # ====================================================
 
         save_epoch_checkpoint(
             model=model,
             optimizer=optimizer,
             epoch=epoch,
-            loss=epoch_loss,
+            loss=train_loss,
         )
+
+        # ====================================================
+        # Epoch Summary
+        # ====================================================
+
+        print("\n" + "-" * 60)
+        print(f"Epoch {epoch} Summary")
+        print("-" * 60)
+
+        print(f"Train Loss : {train_loss:.4f}")
+
+        if val_results is not None:
+
+            print(f"Validation Loss : {val_results['loss']:.4f}")
+            print(f"Pixel Accuracy  : {val_results['pixel_accuracy']:.4f}")
+            print(f"Dice Score      : {val_results['dice']:.4f}")
+            print(f"Mean IoU        : {val_results['mean_iou']:.4f}")
+            print(f"Precision       : {val_results['precision']:.4f}")
+            print(f"Recall          : {val_results['recall']:.4f}")
+            print(f"F1 Score        : {val_results['f1']:.4f}")
+            print(f"Best IoU        : {best_iou:.4f}")
 
     # ========================================================
     # Final Checkpoint
