@@ -28,6 +28,10 @@ NUM_WORKERS = 4
 
 DATASET_ROOT = "data/NewTrain_Grind_table"
 
+VALIDATION_SPLIT = 0.10
+
+RANDOM_SEED = 42
+
 # ============================================================
 # Training
 # ============================================================

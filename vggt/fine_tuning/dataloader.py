@@ -14,6 +14,8 @@ from .config import (
     IMAGE_SIZE,
     BATCH_SIZE,
     NUM_WORKERS,
+    VALIDATION_SPLIT,
+    RANDOM_SEED,
 )
 
 from .dataset import SegmentationDataset
