@@ -32,7 +32,7 @@ DATASET_ROOT = "data/NewTrain_Grind_table"
 # Training
 # ============================================================
 
-NUM_EPOCHS = 20
+NUM_EPOCHS = 1
 
 LEARNING_RATE = 1e-4
 

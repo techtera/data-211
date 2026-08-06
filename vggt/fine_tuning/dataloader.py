@@ -1,4 +1,4 @@
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from .config import (
     DATASET_ROOT,
@@ -16,7 +16,8 @@ def build_dataloader():
         root_dir=DATASET_ROOT,
         image_size=IMAGE_SIZE,
     )
-
+    dataset = Subset(dataset, range(20))
+    
     dataloader = DataLoader(
         dataset,
         batch_size=BATCH_SIZE,
