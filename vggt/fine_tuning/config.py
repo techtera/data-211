@@ -27,8 +27,6 @@ NUM_WORKERS = 4
 # ============================================================
 
 DATASET_ROOT = "data/NewTrain_Grind_table"
-IMAGE_SIZE = 518
-BATCH_SIZE = 4
 
 # ============================================================
 # Training

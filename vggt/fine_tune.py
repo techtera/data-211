@@ -4,7 +4,7 @@ Main script for SegFormer fine-tuning.
 
 from fine_tuning.config import NUM_EPOCHS
 
-from fine_tuning.dataset import build_dataloader
+from fine_tuning.dataloader import build_dataloader
 from fine_tuning.logger import build_writer
 from fine_tuning.losses import build_loss
 from fine_tuning.model_builder import build_model
@@ -88,5 +88,4 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
-
     main()
