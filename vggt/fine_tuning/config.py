@@ -26,7 +26,7 @@ NUM_WORKERS = 4
 # Dataset
 # ============================================================
 
-DATASET_ROOT = "data/NewTrain_Grind_table"
+DATASET_ROOT = "data"
 
 VALIDATION_SPLIT = 0.10
 
@@ -57,13 +57,13 @@ LOG_DIR = "runs/segformer_finetuning"
 
 CHECKPOINT_DIR = "checkpoints"
 
-SAVE_EVERY = 5
+SAVE_EVERY = 0
 
 SAVE_LATEST = True
 
 SAVE_BEST = True
 
-SAVE_FINAL = True
+SAVE_FINAL = False
 
 # ============================================================
 # Device

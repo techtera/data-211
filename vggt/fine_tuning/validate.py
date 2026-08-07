@@ -52,6 +52,7 @@ def validate(
         NUM_CLASSES,
         NUM_CLASSES,
         dtype=torch.int64,
+        device=DEVICE,
     )
 
     with torch.no_grad():

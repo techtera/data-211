@@ -3,7 +3,6 @@ Checkpoint utilities for SegFormer fine-tuning.
 """
 
 from pathlib import Path
-
 import torch
 
 from .config import (
@@ -14,20 +13,12 @@ from .config import (
     SAVE_FINAL,
 )
 
-# ============================================================
-# Checkpoint Directories
-# ============================================================
-
 CHECKPOINT_PATH = Path(CHECKPOINT_DIR)
 EPOCH_CHECKPOINT_PATH = CHECKPOINT_PATH / "epochs"
 
 CHECKPOINT_PATH.mkdir(parents=True, exist_ok=True)
 EPOCH_CHECKPOINT_PATH.mkdir(parents=True, exist_ok=True)
 
-
-# ============================================================
-# Internal Save Function
-# ============================================================
 
 def _save_checkpoint(
     model,
@@ -36,10 +27,6 @@ def _save_checkpoint(
     loss,
     filepath,
 ):
-    """
-    Save a checkpoint.
-    """
-
     checkpoint = {
         "epoch": epoch,
         "loss": loss,
@@ -47,17 +34,10 @@ def _save_checkpoint(
         "optimizer_state_dict": optimizer.state_dict(),
     }
 
-    torch.save(
-        checkpoint,
-        filepath,
-    )
+    torch.save(checkpoint, filepath)
 
     print(f"✓ Checkpoint Saved : {filepath}")
 
-
-# ============================================================
-# Latest Checkpoint
-# ============================================================
 
 def save_latest_checkpoint(
     model,
@@ -65,10 +45,6 @@ def save_latest_checkpoint(
     epoch,
     loss,
 ):
-    """
-    Save latest checkpoint.
-    """
-
     if not SAVE_LATEST:
         return
 
@@ -83,20 +59,12 @@ def save_latest_checkpoint(
     )
 
 
-# ============================================================
-# Best Checkpoint
-# ============================================================
-
 def save_best_checkpoint(
     model,
     optimizer,
     epoch,
     loss,
 ):
-    """
-    Save best checkpoint.
-    """
-
     if not SAVE_BEST:
         return
 
@@ -111,24 +79,22 @@ def save_best_checkpoint(
     )
 
 
-# ============================================================
-# Epoch Checkpoint
-# ============================================================
-
 def save_epoch_checkpoint(
     model,
     optimizer,
     epoch,
     loss,
 ):
-    """
-    Save checkpoint every N epochs.
-    """
+    if SAVE_EVERY <= 0:
+        return
 
     if epoch % SAVE_EVERY != 0:
         return
 
-    filepath = EPOCH_CHECKPOINT_PATH / f"epoch_{epoch:03d}.pth"
+    filepath = (
+        EPOCH_CHECKPOINT_PATH
+        / f"epoch_{epoch:03d}.pth"
+    )
 
     _save_checkpoint(
         model,
@@ -139,20 +105,12 @@ def save_epoch_checkpoint(
     )
 
 
-# ============================================================
-# Final Checkpoint
-# ============================================================
-
 def save_final_checkpoint(
     model,
     optimizer,
     epoch,
     loss,
 ):
-    """
-    Save final model after training.
-    """
-
     if not SAVE_FINAL:
         return
 
@@ -167,20 +125,12 @@ def save_final_checkpoint(
     )
 
 
-# ============================================================
-# Load Checkpoint
-# ============================================================
-
 def load_checkpoint(
     model,
     optimizer,
     checkpoint_path,
     device="cpu",
 ):
-    """
-    Resume training from a checkpoint.
-    """
-
     checkpoint = torch.load(
         checkpoint_path,
         map_location=device,
@@ -195,9 +145,15 @@ def load_checkpoint(
     )
 
     epoch = checkpoint["epoch"]
-
     loss = checkpoint["loss"]
 
-    print(f"✓ Loaded Checkpoint : {checkpoint_path}")
+    print(
+        f"✓ Loaded Checkpoint : {checkpoint_path}"
+    )
 
-    return model, optimizer, epoch, loss
+    return (
+        model,
+        optimizer,
+        epoch,
+        loss,
+    )

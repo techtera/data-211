@@ -29,6 +29,7 @@ def train_one_epoch(
     criterion,
     optimizer,
     epoch,
+    writer=None,
 ):
     """
     Train the model for one epoch.
@@ -41,6 +42,10 @@ def train_one_epoch(
     model.train()
 
     running_loss = 0.0
+
+    global_step_offset = (
+        (epoch - 1) * len(dataloader)
+    )
 
     for batch_idx, (images, masks) in enumerate(dataloader):
 
@@ -88,7 +93,27 @@ def train_one_epoch(
         running_loss += loss.item()
 
         # ----------------------------------------------------
-        # Logging
+        # TensorBoard Batch Logging
+        # ----------------------------------------------------
+
+        if writer is not None:
+
+            global_step = (
+                global_step_offset
+                + batch_idx
+            )
+
+            writer.add_scalar(
+                "BatchLoss/Train",
+                loss.item(),
+                global_step,
+            )
+
+            if (batch_idx + 1) % 100 == 0:
+                writer.flush()
+
+        # ----------------------------------------------------
+        # Console Logging
         # ----------------------------------------------------
 
         if (
@@ -97,7 +122,7 @@ def train_one_epoch(
         ):
 
             print(
-                f"Batch [{batch_idx + 1:03d}/{len(dataloader):03d}] "
+                f"Batch [{batch_idx + 1:04d}/{len(dataloader):04d}] "
                 f"Loss : {loss.item():.4f}"
             )
 
@@ -143,6 +168,7 @@ def train(
             criterion=criterion,
             optimizer=optimizer,
             epoch=epoch,
+            writer=writer,
         )
 
         history.append(train_loss)
@@ -220,6 +246,8 @@ def train(
                 val_results["f1"],
                 epoch,
             )
+
+        writer.flush()
 
         # ====================================================
         # Latest Checkpoint
