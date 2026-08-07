@@ -125,8 +125,17 @@ class SegmentationDataset(Dataset):
         polygon = polygon.copy()
 
         # Convert normalized coordinates to pixel coordinates
-        polygon[:, 0] *= width
-        polygon[:, 1] *= height
+        polygon[:, 0] = np.clip(
+            polygon[:, 0] * width,
+            0,
+            width - 1,
+        )
+
+        polygon[:, 1] = np.clip(
+            polygon[:, 1] * height,
+            0,
+            height - 1,
+        )
 
         polygon = np.round(polygon).astype(np.int32)
 

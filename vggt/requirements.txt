@@ -5,3 +5,6 @@ Pillow
 huggingface_hub
 einops
 safetensors
+matplotlib
+tensorboard
+opencv-python

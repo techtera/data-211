@@ -1,140 +1,59 @@
 """
-Lightweight integration test for the VGGT + SegFormer fine-tuning pipeline.
-
-This script verifies:
-
-1. Dataset
-2. Model
-3. Inference
-4. Training (Loss + Backpropagation)
+Standalone validation pipeline test.
 """
-
-import torch
-
-from fine_tuning.config import (
-    DATASET_ROOT,
-    IMAGE_SIZE,
-)
-
-from fine_tuning.dataset import SegmentationDataset
+from torch.utils.data import Subset
+from torch.utils.data import DataLoader
 from fine_tuning.model_builder import build_model
+from fine_tuning.dataloader import build_dataloaders
 from fine_tuning.losses import build_loss
-from fine_tuning.optimizer import build_optimizer
+from fine_tuning.validate import validate
 
 
-# ============================================================
-# Dataset
-# ============================================================
+def main():
 
-print("=" * 60)
-print("Testing Dataset")
-print("=" * 60)
+    print("=" * 60)
+    print("Validation Pipeline Test")
+    print("=" * 60)
 
-dataset = SegmentationDataset(
-    root_dir=DATASET_ROOT,
-    image_size=IMAGE_SIZE,
-)
+    model = build_model()
 
-print(f"Dataset Size : {len(dataset)}")
+ 
 
-image, mask = dataset[0]
+    _, val_loader = build_dataloaders()
 
-print(f"Image Shape : {image.shape}")
-print(f"Mask Shape  : {mask.shape}")
-print(f"Mask Labels : {torch.unique(mask)}")
+    small_dataset = Subset(
+        val_loader.dataset,
+        range(8),      # only 8 samples
+    )
 
-# Add batch and sequence dimensions
-image = image.unsqueeze(0)      # (1,3,H,W)
-image = image.unsqueeze(1)      # (1,1,3,H,W)
+    val_loader = DataLoader(
+        small_dataset,
+        batch_size=2,
+        shuffle=False,
+    )
 
-mask = mask.unsqueeze(0)        # (1,H,W)
+    criterion = build_loss()
 
-print(f"\nInput Image Shape : {image.shape}")
-print(f"Input Mask Shape  : {mask.shape}")
+    results = validate(
+        model=model,
+        dataloader=val_loader,
+        criterion=criterion,
+    )
 
+    print("\nValidation Results")
 
-# ============================================================
-# Build Model
-# ============================================================
+    for key, value in results.items():
 
-print("\n" + "=" * 60)
-print("Building Model")
-print("=" * 60)
+        if key == "confusion_matrix":
 
-model = build_model()
+            print(f"\n{key}")
+            print(value)
 
+        else:
 
-# ============================================================
-# Inference Test
-# ============================================================
-
-print("\n" + "=" * 60)
-print("Inference Test")
-print("=" * 60)
-
-model.eval()
-
-with torch.no_grad():
-
-    predictions = model(image)
-
-    logits = predictions["mask_logits"]
-
-print(f"Output Shape : {logits.shape}")
-
-print("✓ Inference Successful")
+            print(f"{key:20s}: {value}")
 
 
-# ============================================================
-# Training Test
-# ============================================================
+if __name__ == "__main__":
 
-print("\n" + "=" * 60)
-print("Training Test")
-print("=" * 60)
-
-model.train()
-
-predictions = model(image)
-
-logits = predictions["mask_logits"]
-
-print(f"Output Shape      : {logits.shape}")
-print(f"Requires Grad     : {logits.requires_grad}")
-
-criterion = build_loss()
-
-loss = criterion(
-    logits,
-    mask,
-)
-
-print(f"Loss : {loss.item():.6f}")
-
-optimizer = build_optimizer(model)
-
-optimizer.zero_grad()
-
-loss.backward()
-
-optimizer.step()
-
-print("✓ Backpropagation Successful")
-
-
-# ============================================================
-# Finished
-# ============================================================
-
-print("\n" + "=" * 60)
-print("PIPELINE VERIFIED")
-print("=" * 60)
-
-print("✓ Dataset")
-print("✓ Model")
-print("✓ Inference")
-print("✓ Loss")
-print("✓ Optimizer")
-print("✓ Backpropagation")
-
-print("\n🚀 Everything is ready for fine-tuning!")
+    main()
