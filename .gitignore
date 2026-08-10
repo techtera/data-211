@@ -6,3 +6,14 @@ images/
 *.png
 *.jpeg
 data/
+__pycache__/
+*.pyc
+checkpoints/
+runs/
+*.onnx
+*.engine
+deployment/onnx/aggregator.patch_embed.pos_embed
+deployment/trt_outputs/
+rgb_images.zip
+tb_plots/
+inference_outputs/
