@@ -1,354 +1,415 @@
-# VGGT + SegFormer Edge Segmentation
+# VGGT + SegFormer Object Masking Model
 
-## Project Overview
+## Overview
 
-This project focuses on adapting Meta's Visual Geometry Grounded Transformer (VGGT) architecture for binary edge segmentation. The original VGGT architecture is designed for multi-view 3D understanding tasks such as camera pose estimation, depth prediction, point prediction, and tracking. For this work, the architecture was modified to perform edge segmentation by integrating a SegFormer-based decoder and training it on an edge-mask dataset.
+This project focuses on adapting the Visual Geometry Grounded Transformer (VGGT) architecture for binary object masking. The original VGGT model is primarily designed for 3D vision tasks such as camera pose estimation, depth prediction, point prediction, and tracking. In this project, the original segmentation/depth branch was replaced with a SegFormer-based decoder and fine-tuned for object mask generation.
 
-The project also includes deployment optimization using ONNX and TensorRT to achieve low-latency inference on NVIDIA GPUs.
+The final model predicts a binary segmentation mask where:
+
+- Background = 0 (Black)
+- Object Region = 1 (White)
+
+The project covers:
+
+- Dataset preparation and validation
+- VGGT architecture understanding
+- SegFormer decoder integration
+- Fine-tuning pipeline development
+- Training and evaluation
+- ONNX export
+- TensorRT FP16 optimization
+- High-performance deployment inference
 
 ---
 
 # Problem Statement
 
-The objective was to build an edge segmentation model capable of generating binary edge masks where:
+The objective was to generate accurate object masks from RGB images using the VGGT encoder while leveraging the lightweight and efficient SegFormer decoder for segmentation.
 
-- Background pixels = 0 (Black)
-- Edge pixels = 1 (White)
+The goals were:
 
-The solution needed to:
-
-- Leverage VGGT's strong visual representation capabilities.
-- Replace the original prediction head with a segmentation-focused decoder.
-- Train and fine-tune the architecture on edge-mask data.
-- Deploy the model in an optimized inference pipeline suitable for production use.
+1. Reuse the powerful VGGT feature extractor.
+2. Replace the original DPT segmentation branch.
+3. Fine-tune the architecture on a custom object masking dataset.
+4. Deploy an optimized inference pipeline for production usage.
 
 ---
 
 # Architecture
 
-## Original VGGT Pipeline
+## Original VGGT
 
-```text
 Input Image
-      ↓
-Patch Embedding
-      ↓
-Transformer Encoder
-      ↓
-Aggregator
-      ↓
-Task Heads
-    ├── Camera Head
-    ├── Depth Head
-    ├── Point Head
-    └── Track Head
-```
 
-The original architecture was not designed for segmentation.
+↓
+
+Patch Embedding
+
+↓
+
+Transformer Encoder
+
+↓
+
+Feature Aggregation
+
+↓
+
+DPT Head
+
+↓
+
+Depth / Segmentation Output
 
 ---
 
-## Modified VGGT Pipeline
+## Modified VGGT
 
-```text
 Input Image
-      ↓
+
+↓
+
 Patch Embedding
-      ↓
-Transformer Encoder
-      ↓
-Aggregator
-      ↓
+
+↓
+
+VGGT Transformer Encoder
+
+↓
+
+Feature Aggregation
+
+↓
+
 SegFormer Decoder
-      ↓
-2-Class Segmentation Mask
-```
 
-The original DPT-style prediction head was replaced with a SegFormer-based segmentation decoder.
+↓
 
-Output classes:
+2-Class Mask Prediction
 
-- Class 0 → Background
-- Class 1 → Edge
+↓
 
-Final output shape:
+Object Mask
+
+---
+
+# Model Components
+
+## Encoder
+
+VGGT Aggregator
+
+The encoder is responsible for:
+
+- Image patch extraction
+- Positional encoding
+- Multi-scale transformer processing
+- Feature aggregation
+
+Input Size:
 
 ```python
-[B, 2, H, W]
+(1, 1, 3, 518, 518)
 ```
-
----
-
-# Development Process
-
-## Phase 1: Environment Setup
-
-### Tasks Completed
-
-- Set up VGGT repository.
-- Resolved dependency issues.
-- Verified inference pipeline.
-- Studied VGGT architecture and codebase.
-
-### Key Learnings
-
-- Transformer-based visual encoders.
-- Patch embeddings.
-- Multi-view feature aggregation.
-- VGGT inference flow.
-
----
-
-## Phase 2: Understanding VGGT
-
-Studied:
-
-### Aggregator
-
-Responsible for:
-
-- Image token generation.
-- Transformer feature extraction.
-- Feature aggregation.
 
 Output:
 
-```python
-aggregated_tokens_list
-patch_start_idx
-```
+Multi-scale transformer feature representations.
 
 ---
 
-### Camera Head
+## Decoder
 
-Produces:
-
-```python
-pose_enc
-```
-
-Used for camera pose estimation.
-
----
-
-### DPT Head
-
-Original dense prediction head.
-
-Initially investigated whether it could be directly reused for segmentation.
-
----
-
-# Phase 3: Decoder Investigation
-
-Multiple approaches were evaluated.
-
-### Option 1
-
-Directly attach an external segmentation decoder.
-
-Issues:
-
-- Feature mismatch.
-- Channel mismatch.
-- Spatial resolution mismatch.
-
-Result:
-
-Not practical.
-
----
-
-### Option 2
-
-Fine-tune with a SegFormer decoder.
-
-Result:
-
-Selected approach.
-
----
-
-# Phase 4: SegFormer Integration
-
-Implemented:
-
-```python
 SegFormer Decoder
-```
 
-Integrated decoder into VGGT pipeline.
+The decoder receives hierarchical features from the VGGT encoder and produces dense segmentation predictions.
 
-### Modifications
-
-Replaced original prediction head:
+Configuration:
 
 ```python
-self.depth_head
+output_dim = 2
 ```
 
-with
+Classes:
 
 ```python
-SegFormer-based decoder
+0 → Background
+1 → Object
 ```
 
-Updated forward pass:
+Output Shape:
+
+```python
+(1, 2, 518, 518)
+```
+
+---
+
+# Dataset Pipeline
+
+## Dataset Preparation
+
+The dataset consists of:
+
+```text
+images/
+masks/
+```
+
+Each image has a corresponding binary mask.
+
+Mask Format:
+
+```text
+0 = Background
+255 = Object
+```
+
+Converted during training to:
+
+```text
+0 = Background
+1 = Object
+```
+
+---
+
+## Preprocessing
+
+Input images:
+
+- Resize to 518 × 518
+- Normalization using VGGT preprocessing
+- Conversion to tensor format
+
+Mask preprocessing:
+
+- Resize
+- Binary conversion
+- Long tensor conversion
+
+---
+
+# Training Pipeline
+
+## Loss Function
+
+Cross Entropy Loss
+
+```python
+nn.CrossEntropyLoss()
+```
+
+Used because the task is binary semantic segmentation.
+
+---
+
+## Optimizer
+
+```python
+AdamW
+```
+
+Benefits:
+
+- Stable convergence
+- Better transformer training behavior
+- Improved generalization
+
+---
+
+## Learning Strategy
+
+Fine-tuning approach:
+
+1. Load pretrained VGGT weights.
+2. Replace DPT decoder.
+3. Attach SegFormer decoder.
+4. Train segmentation branch.
+5. Fine-tune complete network.
+
+---
+
+# Implementation Details
+
+## Custom Model Builder
+
+Responsibilities:
+
+- Build VGGT encoder
+- Attach SegFormer decoder
+- Load pretrained weights
+- Restore checkpoints
+
+---
+
+## Forward Pass
+
+Input:
+
+```python
+(1,1,3,518,518)
+```
+
+Flow:
+
+```python
+Image
+ ↓
+VGGT Aggregator
+ ↓
+Multi-scale Features
+ ↓
+SegFormer Decoder
+ ↓
+Mask Logits
+```
+
+Output Dictionary:
+
+```python
+{
+    "pose_enc",
+    "pose_enc_list",
+    "mask_logits",
+    "images"
+}
+```
+
+Mask Output:
 
 ```python
 predictions["mask_logits"]
 ```
 
-Output:
+Shape:
 
 ```python
-[B, 2, H, W]
+(1,2,518,518)
 ```
 
 ---
 
-# Phase 5: Dataset Pipeline
+# Training Results
 
-Implemented:
+The model successfully learned object boundaries and object regions from the custom dataset.
 
-### Dataset Loader
+Observed improvements:
 
-- Image loading.
-- Mask loading.
-- Preprocessing.
-
-### Augmentations
-
-- Resizing.
-- Tensor conversion.
-- Normalization.
-
-### Validation
-
-Verified:
-
-- Image-mask alignment.
-- Tensor dimensions.
-- Data integrity.
+- Stable training convergence
+- Accurate object localization
+- Clean segmentation boundaries
+- Robust mask generation on unseen samples
 
 ---
 
-# Phase 6: Training Pipeline
+# Inference Pipeline
 
-Implemented complete training workflow.
+## PyTorch Inference
 
-### Components
-
-- Training loop.
-- Validation loop.
-- Checkpoint saving.
-- Best model selection.
-
-### Loss Function
-
-Cross Entropy Loss.
-
-### Optimizer
-
-AdamW.
-
-### Monitoring
-
-- Training loss.
-- Validation loss.
-- Segmentation quality.
-
----
-
-# Phase 7: Fine-Tuning
-
-Fine-tuned VGGT encoder with SegFormer decoder.
-
-Training duration:
+Workflow:
 
 ```text
-65 Epochs
+Image
+ ↓
+VGGT Encoder
+ ↓
+SegFormer Decoder
+ ↓
+Mask Logits
+ ↓
+Argmax
+ ↓
+Binary Mask
 ```
 
-Monitored:
+Generated Outputs:
 
-- Training convergence.
-- Validation performance.
-- Prediction quality.
+```text
+_mask.png
+```
 
 ---
 
-# Results
+## Overlay Visualization
 
-The model successfully learned edge structures and produced clean binary edge masks.
+For qualitative evaluation:
+
+```text
+Original Image
++
+Predicted Mask
+=
+Overlay Image
+```
+
+Generated Outputs:
+
+```text
+_overlay.png
+```
+
+This allowed easy visual inspection of segmentation quality.
+
+---
+
+# ONNX Export
+
+The trained PyTorch model was exported to ONNX.
+
+Export Settings:
+
+```python
+opset_version = 17
+```
 
 Output:
-
-```text
-Input Image
-      ↓
-VGGT Encoder
-      ↓
-SegFormer Decoder
-      ↓
-Binary Edge Segmentation Mask
-```
-
----
-
-# Inference Optimization
-
-After training was completed, focus shifted toward deployment optimization.
-
-Goal:
-
-Reduce inference latency and improve throughput.
-
----
-
-## Step 1: ONNX Export
-
-Created export pipeline.
-
-Converted:
-
-```text
-PyTorch
-      ↓
-ONNX
-```
-
-Challenges encountered:
-
-- Dynamic graph issues.
-- Device mismatches.
-- Output dictionary handling.
-- Unsupported export paths.
-
-Resolved all export issues.
-
-Final exported model:
 
 ```text
 vggt_segformer_clean.onnx
 ```
 
+Purpose:
+
+- Hardware-independent deployment
+- TensorRT conversion
+- Runtime optimization
+
 ---
 
-## Step 2: TensorRT Conversion
+# TensorRT Optimization
 
-Converted ONNX model into TensorRT engine.
+## Motivation
 
-Pipeline:
+Although PyTorch inference was functional, deployment required:
 
-```text
-PyTorch
-      ↓
+- Lower latency
+- Better throughput
+- Production-ready execution
+
+TensorRT was used to optimize the model graph.
+
+---
+
+## Conversion Pipeline
+
+PyTorch Checkpoint
+
+↓
+
 ONNX
-      ↓
+
+↓
+
 TensorRT FP16 Engine
-```
+
+↓
+
+Optimized Deployment
+
+---
+
+## Final Engine
 
 Generated:
 
@@ -356,59 +417,39 @@ Generated:
 vggt_segformer_clean_fp16.engine
 ```
 
----
+TensorRT Version:
 
-## TensorRT Validation
-
-Verified engine:
-
-### Input
-
-```python
-(1, 1, 3, 518, 518)
+```text
+8.6.1
 ```
 
-### Output
+Precision:
+
+```text
+FP16
+```
+
+---
+
+# TensorRT Engine Validation
+
+Verified Engine IO:
+
+Input:
+
+```python
+input
+(1,1,3,518,518)
+```
+
+Output:
 
 ```python
 mask_logits
-(1, 2, 518, 518)
+(1,2,518,518)
 ```
 
-Confirmed:
-
-- Correct tensor dimensions.
-- Correct segmentation output.
-- Successful inference execution.
-
----
-
-# TensorRT Inference Pipeline
-
-Implemented:
-
-```text
-Image
-    ↓
-Preprocessing
-    ↓
-TensorRT Engine
-    ↓
-Segmentation Mask
-    ↓
-Overlay Generation
-```
-
-Generated:
-
-- Binary masks.
-- Overlay visualizations.
-
-Successfully tested on:
-
-```text
-100 validation images
-```
+Successfully matched PyTorch output structure.
 
 ---
 
@@ -420,41 +461,26 @@ Hardware:
 NVIDIA A100 80GB
 ```
 
-TensorRT FP16 Benchmark:
+TensorRT FP16 Results:
 
 | Metric | Value |
 |----------|----------|
-| Throughput | 34.64 FPS |
-| Mean Latency | 29.14 ms |
-| GPU Compute Time | 28.69 ms |
-| H2D Transfer | 0.27 ms |
-| D2H Transfer | 0.17 ms |
+| Latency | ~29 ms |
+| Throughput | ~34.6 FPS |
+| Precision | FP16 |
+| Input Resolution | 518 × 518 |
 
----
-
-# Final Deployment Artifacts
-
-## Training Artifact
+Performance Summary:
 
 ```text
-best_model.pth
+Mean Latency:
+≈ 29.1 ms
+
+Throughput:
+≈ 34.6 FPS
 ```
 
----
-
-## ONNX Model
-
-```text
-vggt_segformer_clean.onnx
-```
-
----
-
-## TensorRT Engine
-
-```text
-vggt_segformer_clean_fp16.engine
-```
+The optimized TensorRT engine provided a production-ready deployment path while maintaining segmentation quality.
 
 ---
 
@@ -470,47 +496,57 @@ vggt/
 │   └── utils.py
 │
 ├── vggt/
+│   ├── models/
+│   │   └── vggt_modifying.py
+│   │
 │   ├── heads/
-│   ├── layers/
-│   └── models/
+│   │   └── segformer_head_for_dpt.py
+│   │
+│   └── layers/
+│       └── rope.py
 │
 ├── deployment/
-│   ├── export_onnx.py
 │   ├── validate_pytorch_outputs.py
 │   ├── trt_inference_overlay.py
 │   └── onnx/
 │
 ├── checkpoints/
 │
-└── training/
+├── export_onnx.py
+│
+└── README.md
 ```
 
 ---
 
-# Key Outcomes
+# Key Learnings
 
-- Successfully adapted VGGT for edge segmentation.
-- Integrated SegFormer decoder into VGGT architecture.
-- Built complete dataset and training pipeline.
-- Fine-tuned model for binary edge prediction.
-- Exported model to ONNX.
-- Converted model to TensorRT FP16.
-- Validated deployment pipeline.
-- Generated overlay-based inference outputs.
-- Achieved ~34.6 FPS and ~29 ms latency on NVIDIA A100.
+During this project:
 
----
-
-# Future Improvements
-
-- INT8 TensorRT quantization.
-- Dynamic batch support.
-- TensorRT plugin optimization.
-- Mixed-resolution inference.
-- Multi-class segmentation support.
-- Edge refinement post-processing.
+- Understood transformer-based vision architectures.
+- Studied VGGT internals and feature aggregation.
+- Integrated SegFormer with a pretrained transformer encoder.
+- Built a complete segmentation fine-tuning pipeline.
+- Learned ONNX deployment workflows.
+- Learned TensorRT engine generation and validation.
+- Built an optimized production inference pipeline.
+- Benchmarked deployment performance on NVIDIA A100 GPUs.
 
 ---
+
+# Final Outcome
+
+Successfully developed and deployed a VGGT + SegFormer object masking model capable of generating accurate binary object masks from RGB images.
+
+Final deployment includes:
+
+- Fine-tuned segmentation model
+- ONNX export pipeline
+- TensorRT FP16 engine
+- Overlay visualization pipeline
+- Production-ready inference workflow
+
+The project demonstrates an end-to-end workflow from research model modification and fine-tuning to optimized deployment and inference acceleration.
 
 # Author
 
