@@ -26,6 +26,7 @@ from fine_tuning.config import (
 from fine_tuning.model_builder import build_model
 from fine_tuning.dataloader import build_dataloaders
 from fine_tuning.losses import build_loss, compute_total_loss
+from fine_tuning.evaluate import dice_score, boundary_f1, confusion_matrix
 
 
 # ============================================================
@@ -214,6 +215,41 @@ def main():
         print("FAIL : Decoder has no gradients")
 
     # --------------------------------------------------------
+    # 4. Evaluation Metrics
+    # --------------------------------------------------------
+
+    print("\n" + "=" * 60)
+    print("Evaluation Metrics (on overfitted batch)")
+    print("=" * 60)
+
+    model.eval()
+
+    with torch.no_grad():
+        probs = model(images)
+
+    # [B, S, 1, H, W] -> [B*S, 1, H, W]
+    B, S = probs.shape[:2]
+    probs_flat = probs.view(B * S, 1, probs.shape[3], probs.shape[4])
+    masks_flat = masks.view(B * S, 1, masks.shape[3], masks.shape[4])
+
+    pred_binary = (probs_flat > 0.5).float()
+    target_binary = masks_flat.float()
+
+    # Dice
+    dice = dice_score(pred_binary, target_binary)
+    print(f"\nDice Score         : {dice:.4f}")
+
+    # BF1
+    bf1 = boundary_f1(pred_binary, target_binary, tolerance=2)
+    print(f"BF1 Precision      : {bf1['precision']:.4f}")
+    print(f"BF1 Recall         : {bf1['recall']:.4f}")
+    print(f"BF1 F1             : {bf1['f1']:.4f}")
+
+    # Confusion Matrix
+    cm = confusion_matrix(pred_binary, target_binary)
+    print(f"Confusion Matrix   : TP={cm['tp']:,}  FP={cm['fp']:,}  FN={cm['fn']:,}  TN={cm['tn']:,}")
+
+    # --------------------------------------------------------
     # Final Verdict
     # --------------------------------------------------------
 
@@ -229,6 +265,11 @@ def main():
         print("OVERALL: PASS")
     else:
         print("OVERALL: FAIL")
+
+    if dice > 0.9:
+        print("OVERFIT CHECK: PASS (Dice > 0.9)")
+    else:
+        print(f"OVERFIT CHECK: PARTIAL (Dice = {dice:.4f}, expected > 0.9)")
 
     print("=" * 60)
 
