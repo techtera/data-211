@@ -43,7 +43,7 @@ NUM_WORKERS = 4
 # Training
 # ============================================================
 
-NUM_EPOCHS = 100
+NUM_EPOCHS = 1
 
 LEARNING_RATE = 3e-4
 
