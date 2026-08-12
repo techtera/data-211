@@ -9,6 +9,7 @@ from fine_tuning.model_builder import build_model
 from fine_tuning.optimizer import build_optimizer
 from fine_tuning.scheduler import build_scheduler
 from fine_tuning.trainer import train
+from fine_tuning.evaluate import evaluate
 
 
 # ============================================================
@@ -71,6 +72,15 @@ def main():
     )
 
     # --------------------------------------------------------
+    # Evaluation
+    # --------------------------------------------------------
+
+    results = evaluate(
+        model=model,
+        dataloader=val_loader,
+    )
+
+    # --------------------------------------------------------
     # Summary
     # --------------------------------------------------------
 
@@ -80,6 +90,9 @@ def main():
 
     print(f"Total Epochs       : {NUM_EPOCHS}")
     print(f"Best Val Loss      : {best_val_loss:.6f}")
+    print(f"Dice Score         : {results['dice']:.4f}")
+    print(f"BF1 F1             : {results['bf1']['f1']:.4f}")
+    print(f"ODS Best F1        : {results['ods']['best_f1']:.4f}")
 
     print("\nFine-tuning completed successfully.")
 
