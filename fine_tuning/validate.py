@@ -30,6 +30,9 @@ def validate(model, dataloader, criterion):
     print("Validation")
     print("-" * 60)
 
+    model.train()
+    model.feature_extractor.aggregator.eval()
+
     total_loss = 0.0
     total_samples = 0
     total_edge_ratio = 0.0
@@ -40,20 +43,17 @@ def validate(model, dataloader, criterion):
         # Move to device
         # --------------------------------------------------------
 
-        images = images.to(DEVICE)
-        masks = masks.to(DEVICE)
+        images = images.to(DEVICE, non_blocking=True)
+        masks = masks.to(DEVICE, non_blocking=True)
 
         batch_size = images.size(0)
         total_samples += batch_size
 
         # --------------------------------------------------------
-        # Forward (need logits for loss, so use train mode briefly)
+        # Forward (train mode to get logits triple)
         # --------------------------------------------------------
 
         with autocast(device_type="cuda", enabled=(DEVICE.type == "cuda")):
-
-            model.train()
-            model.feature_extractor.aggregator.eval()
 
             logits, ds1_logits, ds2_logits = model(images)
 
@@ -61,8 +61,6 @@ def validate(model, dataloader, criterion):
                 logits, ds1_logits, ds2_logits,
                 masks, criterion,
             )
-
-            model.eval()
 
         # --------------------------------------------------------
         # Edge Ratio (collapse detection)

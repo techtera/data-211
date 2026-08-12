@@ -70,8 +70,8 @@ def train_one_epoch(
         # Move to device
         # --------------------------------------------------------
 
-        images = images.to(DEVICE)
-        masks = masks.to(DEVICE)
+        images = images.to(DEVICE, non_blocking=True)
+        masks = masks.to(DEVICE, non_blocking=True)
 
         # --------------------------------------------------------
         # Forward (mixed precision)

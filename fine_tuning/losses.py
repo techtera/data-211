@@ -15,6 +15,7 @@ from .config import (
     DS1_WEIGHT,
     DS2_WEIGHT,
     FINAL_WEIGHT,
+    DEVICE,
 )
 
 
@@ -130,11 +131,12 @@ def build_loss():
     print("Building Loss Function")
     print("=" * 60)
 
-    criterion = EdgeLoss()
+    criterion = EdgeLoss().to(DEVICE)
 
     print(f"BCE Weight         : {BCE_WEIGHT}")
     print(f"Dice Weight        : {DICE_WEIGHT}")
     print(f"Pos Weight Clamp   : {POS_WEIGHT_CLAMP}")
     print(f"DS Weights         : final={FINAL_WEIGHT}, ds2={DS2_WEIGHT}, ds1={DS1_WEIGHT}")
+    print(f"Device             : {DEVICE}")
 
     return criterion
