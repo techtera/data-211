@@ -53,26 +53,39 @@ class EdgeMaskDataset(Dataset):
         self.rgb_dir = self.data_dir / "rgb"
         self.mask_dir = self.data_dir / "masks"
 
+        # Single listdir per directory (2 remote calls total, not 12k)
+        rgb_files = os.listdir(self.rgb_dir)
+        mask_files = os.listdir(self.mask_dir)
+
+        # Build lookup set of mask stems (strip "_mask" suffix)
+        mask_stems = set()
+        for f in mask_files:
+            if f.lower().endswith((".png", ".jpg", ".jpeg")):
+                stem = Path(f).stem
+                if stem.endswith("_mask"):
+                    mask_stems.add(stem[:-5])
+
+        # Filter RGB files to only those with matching masks
         all_images = sorted([
-            f for f in os.listdir(self.rgb_dir)
+            f for f in rgb_files
             if f.lower().endswith((".png", ".jpg", ".jpeg"))
         ])
 
-        # Only keep images that have a matching mask
-        self.image_names = []
-        skipped = 0
+        self.image_names = [
+            f for f in all_images
+            if Path(f).stem in mask_stems
+        ]
 
-        for f in all_images:
-            stem = Path(f).stem
-            suffix = Path(f).suffix
-            mask_path = self.mask_dir / f"{stem}_mask{suffix}"
-            if mask_path.exists():
-                self.image_names.append(f)
-            else:
-                skipped += 1
+        # Logging
+        total_rgb = len(all_images)
+        total_masks = len(mask_stems)
+        valid_pairs = len(self.image_names)
+        missing_masks = total_rgb - valid_pairs
 
-        if skipped > 0:
-            print(f"  Skipped {skipped} images with no matching mask")
+        print(f"  Total RGB files  : {total_rgb}")
+        print(f"  Total mask files : {total_masks}")
+        print(f"  Valid pairs      : {valid_pairs}")
+        print(f"  Missing masks    : {missing_masks}")
 
         self.rgb_transform = transforms.Compose([
             transforms.Resize(
