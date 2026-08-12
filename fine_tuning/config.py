@@ -82,7 +82,7 @@ FINAL_WEIGHT = 1.0
 
 CHECKPOINT_DIR = "checkpoints"
 
-SAVE_EVERY = 10
+SAVE_EVERY = 0
 
 SAVE_LATEST = True
 
