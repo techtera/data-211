@@ -53,10 +53,26 @@ class EdgeMaskDataset(Dataset):
         self.rgb_dir = self.data_dir / "rgb"
         self.mask_dir = self.data_dir / "masks"
 
-        self.image_names = sorted([
+        all_images = sorted([
             f for f in os.listdir(self.rgb_dir)
             if f.lower().endswith((".png", ".jpg", ".jpeg"))
         ])
+
+        # Only keep images that have a matching mask
+        self.image_names = []
+        skipped = 0
+
+        for f in all_images:
+            stem = Path(f).stem
+            suffix = Path(f).suffix
+            mask_path = self.mask_dir / f"{stem}_mask{suffix}"
+            if mask_path.exists():
+                self.image_names.append(f)
+            else:
+                skipped += 1
+
+        if skipped > 0:
+            print(f"  Skipped {skipped} images with no matching mask")
 
         self.rgb_transform = transforms.Compose([
             transforms.Resize(
