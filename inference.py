@@ -19,7 +19,7 @@ from torchvision import transforms
 from PIL import Image
 import numpy as np
 
-from vggt.vggt.models.vggt import VGGT
+from vggt.models.vggt import VGGT
 from edge_mask.model import VGGTEdgeMask
 from fine_tuning.config import PRETRAINED_MODEL, IMAGE_SIZE
 
