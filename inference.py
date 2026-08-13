@@ -87,7 +87,7 @@ def predict(model, image_tensor, device, threshold=0.5):
     """
     Run inference on a single image tensor.
 
-    Returns probability map and binary mask.
+    Returns binary mask at 1280x720.
     """
 
     image_tensor = image_tensor.to(device, non_blocking=True)
@@ -95,32 +95,35 @@ def predict(model, image_tensor, device, threshold=0.5):
     with torch.amp.autocast(device_type="cuda", enabled=(device.type == "cuda")):
         prob_map = model(image_tensor)
 
+    prob_map = F.interpolate(
+        prob_map.view(1, 1, 518, 518),
+        size=(720, 1280),
+        mode="bilinear",
+        align_corners=False,
+    )
+
     prob_map = prob_map.squeeze().cpu()
     binary_mask = (prob_map >= threshold).float()
 
-    return prob_map.numpy(), binary_mask.numpy()
+    return binary_mask.numpy()
 
 
 # ============================================================
 # Save Output
 # ============================================================
 
-def save_output(prob_map, binary_mask, output_path):
+def save_output(binary_mask, output_path):
     """
-    Save probability map and binary mask as images.
+    Save binary mask as a 1280x720 image.
     """
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    prob_img = Image.fromarray((prob_map * 255).astype(np.uint8), mode="L")
-    prob_img.save(output_path.with_suffix(".prob.png"))
-
     mask_img = Image.fromarray((binary_mask * 255).astype(np.uint8), mode="L")
     mask_img.save(output_path)
 
     print(f"  Saved: {output_path}")
-    print(f"  Saved: {output_path.with_suffix('.prob.png')}")
 
 
 # ============================================================
@@ -190,12 +193,12 @@ def main():
         print(f"Processing: {img_path.name}")
 
         image_tensor = preprocess_image(img_path)
-        prob_map, binary_mask = predict(
+        binary_mask = predict(
             model, image_tensor, device, args.threshold
         )
 
         output_path = output_dir / f"{img_path.stem}_mask.png"
-        save_output(prob_map, binary_mask, output_path)
+        save_output(binary_mask, output_path)
 
     print(f"\nDone. {len(image_paths)} image(s) processed.")
 
