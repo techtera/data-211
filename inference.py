@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, ".")
 
 import argparse
+import time
 from pathlib import Path
 
 import torch
@@ -188,19 +189,36 @@ def main():
     print(f"\nRunning inference on {len(image_paths)} image(s)...\n")
 
     output_dir = Path(args.output_dir)
+    latencies = []
 
     for img_path in image_paths:
         print(f"Processing: {img_path.name}")
 
         image_tensor = preprocess_image(img_path)
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
         binary_mask = predict(
             model, image_tensor, device, args.threshold
         )
+
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        t1 = time.perf_counter()
+
+        latency_ms = (t1 - t0) * 1000
+        latencies.append(latency_ms)
+        print(f"  Latency: {latency_ms:.1f} ms")
 
         output_path = output_dir / f"{img_path.stem}_mask.png"
         save_output(binary_mask, output_path)
 
     print(f"\nDone. {len(image_paths)} image(s) processed.")
+    if latencies:
+        print(f"Latency — avg: {sum(latencies)/len(latencies):.1f} ms | "
+              f"min: {min(latencies):.1f} ms | max: {max(latencies):.1f} ms")
 
 
 if __name__ == "__main__":
