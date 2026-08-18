@@ -1,0 +1,18 @@
+# Checkpoints and model weights
+checkpoints/
+*.pt
+*.pth
+*.onnx
+
+# Large archives
+*.zip
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+
+# Output directories
+2 checkpoint output/
