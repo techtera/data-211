@@ -28,8 +28,6 @@ from onnxruntime.quantization import (
     CalibrationMethod,
 )
 from onnxruntime.quantization.calibrate import create_calibrator
-from onnxruntime.quantization.quantize import StaticQuantConfig, quantize as quantize_impl
-from onnxruntime.quantization.shape_inference import quant_pre_process
 
 
 IMAGE_SIZE = 518
@@ -94,20 +92,10 @@ def main():
     print(f"Output model: {args.output}")
     print(f"Calibration method: {args.calibration_method}")
 
-    # Step 1: Preprocess model (shape inference + optimization)
-    preprocessed_path = str(Path(args.encoder_onnx).with_suffix(".preprocessed.onnx"))
-    print("\n[1/3] Preprocessing model...")
-    quant_pre_process(
-        args.encoder_onnx,
-        preprocessed_path,
-        auto_merge=True,
-    )
-    print(f"  Saved: {preprocessed_path}")
-
-    # Step 2: Calibrate on GPU
-    print(f"\n[2/3] Running calibration on GPU ({args.num_samples} images)...")
+    # Step 1: Calibrate on GPU (skip preprocessing — protobuf 2GB limit on large models)
+    print(f"\n[1/2] Running calibration on GPU ({args.num_samples} images)...")
     calibrator = create_calibrator(
-        model=preprocessed_path,
+        model=args.encoder_onnx,
         op_types_to_calibrate=None,
         augmented_model_path=str(Path(preprocessed_path).with_suffix(".augmented.onnx")),
         calibrate_method=calibration_methods[args.calibration_method],
@@ -125,15 +113,15 @@ def main():
     tensors_range = calibrator.compute_data()
     print(f"  Collected ranges for {len(tensors_range)} tensors")
 
-    # Step 3: Quantize with pre-computed ranges
-    print(f"\n[3/3] Applying INT8 quantization...")
+    # Step 2: Quantize with pre-computed ranges
+    print(f"\n[2/2] Applying INT8 quantization...")
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
     from onnxruntime.quantization.onnx_quantizer import ONNXQuantizer
     from onnxruntime.quantization.registry import IntegerOpsRegistry, QDQRegistry
     import onnx
 
-    model = onnx.load(preprocessed_path)
+    model = onnx.load(args.encoder_onnx)
 
     quantizer = ONNXQuantizer(
         model=model,
