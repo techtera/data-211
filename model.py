@@ -183,7 +183,7 @@ class VGGTUnified(nn.Module):
         ckpt = torch.load(checkpoint_path, map_location=device)
         state_dict = ckpt["model_state_dict"]
 
-        fp16 = ckpt.get("config", {}).get("fp16", F                                         a    lse)
+        fp16 = ckpt.get("config", {}).get("fp16", False)
         if fp16:
             state_dict = {k: v.float() for k, v in state_dict.items()}
 
