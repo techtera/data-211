@@ -27,7 +27,7 @@ from onnxruntime.quantization import (
     QuantFormat,
     CalibrationMethod,
 )
-from onnxruntime.quantization.calibrate import create_calibrator
+from onnxruntime.quantization.calibrate import MinMaxCalibrater, EntropyCalibrater
 
 
 IMAGE_SIZE = 518
@@ -92,18 +92,18 @@ def main():
     print(f"Output model: {args.output}")
     print(f"Calibration method: {args.calibration_method}")
 
-    # Step 1: Calibrate on GPU (skip preprocessing — protobuf 2GB limit on large models)
+    # Step 1: Calibrate on GPU
     print(f"\n[1/2] Running calibration on GPU ({args.num_samples} images)...")
-    calibrator = create_calibrator(
+    gpu_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    CalibratorClass = MinMaxCalibrater if args.calibration_method == "minmax" else EntropyCalibrater
+    calibrator = CalibratorClass(
         model=args.encoder_onnx,
         op_types_to_calibrate=None,
         augmented_model_path=str(Path(args.encoder_onnx).with_suffix(".augmented.onnx")),
-        calibrate_method=calibration_methods[args.calibration_method],
         use_external_data_format=True,
-        extra_options={
-            "symmetric": True,
-            "execution_providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
-        },
+        symmetric=True,
+        providers=gpu_providers,
     )
 
     data_reader = EncoderCalibrationDataReader(
