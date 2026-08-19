@@ -112,15 +112,29 @@ def main():
         weight_type=QuantType.QInt8,
         activation_type=QuantType.QInt8,
         calibrate_method=calibration_methods[args.calibration_method],
+        use_external_data_format=True,
         extra_options={
             "ActivationSymmetric": True,
             "WeightSymmetric": True,
         },
     )
 
-    input_size = Path(args.encoder_onnx).stat().st_size / (1024 ** 2)
-    output_size = Path(args.output).stat().st_size / (1024 ** 2)
-    print(f"\nDone! {input_size:.0f} MB → {output_size:.0f} MB ({output_size/input_size:.1%})")
+    # Calculate total size including external data files
+    output_dir = Path(args.output).parent
+    output_stem = Path(args.output).stem
+    total_output = sum(
+        f.stat().st_size for f in output_dir.iterdir()
+        if f.name.startswith(output_stem)
+    ) / (1024 ** 2)
+
+    input_dir = Path(args.encoder_onnx).parent
+    input_stem = Path(args.encoder_onnx).stem
+    total_input = sum(
+        f.stat().st_size for f in input_dir.iterdir()
+        if f.name.startswith(input_stem)
+    ) / (1024 ** 2)
+
+    print(f"\nDone! {total_input:.0f} MB → {total_output:.0f} MB ({total_output/total_input:.1%})")
 
 
 if __name__ == "__main__":

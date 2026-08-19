@@ -16,6 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
+import onnx
+from onnx.external_data_helper import convert_model_to_external_data
 
 from encoder import Aggregator
 
@@ -81,10 +83,14 @@ def main():
 
     output_names = [f"layer_{idx}_tokens" for idx in sorted(aggregator.cached_layer_indices)]
 
+    # Export to a temporary path first, then save with external data
+    import tempfile
+    tmp_path = tempfile.mktemp(suffix=".onnx")
+
     torch.onnx.export(
         wrapper,
         dummy,
-        args.output,
+        tmp_path,
         export_params=True,
         opset_version=args.opset,
         do_constant_folding=True,
@@ -96,7 +102,21 @@ def main():
         },
     )
 
+    # Re-save with external data to avoid protobuf 2GB limit
+    print("Converting to external data format (avoids 2GB protobuf limit)...")
+    model = onnx.load(tmp_path, load_external_data=False)
+    data_filename = Path(args.output).stem + "_data.bin"
+    convert_model_to_external_data(
+        model,
+        all_tensors_to_one_file=True,
+        location=data_filename,
+        size_threshold=1024,
+    )
+    onnx.save(model, args.output)
+    Path(tmp_path).unlink(missing_ok=True)
+
     print(f"ONNX export complete: {args.output}")
+    print(f"  External data: {Path(args.output).parent / data_filename}")
     print(f"Output names: {output_names}")
 
 
