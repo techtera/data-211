@@ -93,7 +93,7 @@ def main():
         model_output=args.output,
         calibration_data_reader=data_reader,
         quant_format=QuantFormat.QDQ,
-        per_channel=True,
+        per_channel=False,
         weight_type=QuantType.QInt8,
         activation_type=QuantType.QInt8,
         calibrate_method=CalibrationMethod.MinMax,
