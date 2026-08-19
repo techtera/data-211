@@ -28,6 +28,7 @@ from onnxruntime.quantization import (
     QuantFormat,
     CalibrationMethod,
 )
+from onnxruntime.quantization.shape_inference import quant_pre_process
 
 
 IMAGE_SIZE = 518
@@ -97,6 +98,16 @@ def main():
     print(f"Calibration method: {args.calibration_method}")
     print(f"Per-channel: {args.per_channel}")
 
+    # Preprocess: shape inference + graph optimization (reduces memory during calibration)
+    preprocessed_path = str(Path(args.encoder_onnx).with_suffix(".preprocessed.onnx"))
+    print("Preprocessing model (shape inference + optimization)...")
+    quant_pre_process(
+        args.encoder_onnx,
+        preprocessed_path,
+        auto_merge=True,
+    )
+    print(f"  Preprocessed model saved to {preprocessed_path}")
+
     calibration_reader = EncoderCalibrationDataReader(
         args.calibration_dir, num_samples=args.num_samples
     )
@@ -104,7 +115,7 @@ def main():
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
     quantize_static(
-        model_input=args.encoder_onnx,
+        model_input=preprocessed_path,
         model_output=args.output,
         calibration_data_reader=calibration_reader,
         quant_format=QuantFormat.QDQ,
