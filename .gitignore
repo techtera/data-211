@@ -17,3 +17,4 @@ __pycache__/
 
 # Output directories
 2 checkpoint output/
+evaluation_results/
