@@ -55,6 +55,9 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
         img_path = self.image_paths[self.index]
         self.index += 1
 
+        if self.index % 10 == 0 or self.index == 1:
+            print(f"  [{self.index}/{len(self.image_paths)}] {img_path.name}")
+
         img = Image.open(img_path).convert("RGB").resize((IMAGE_SIZE, IMAGE_SIZE))
         arr = np.array(img, dtype=np.float32) / 255.0
         arr = arr.transpose(2, 0, 1)
@@ -94,7 +97,10 @@ def main():
 
     # Step 1: Calibrate on GPU
     print(f"\n[1/2] Running calibration on GPU ({args.num_samples} images)...")
-    gpu_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    gpu_providers = [
+        ("CUDAExecutionProvider", {"device_id": 1}),
+        "CPUExecutionProvider",
+    ]
 
     CalibratorClass = MinMaxCalibrater if args.calibration_method == "minmax" else EntropyCalibrater
     calibrator = CalibratorClass(
