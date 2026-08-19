@@ -37,7 +37,7 @@ IMAGE_SIZE = 518
 class EncoderCalibrationDataReader(CalibrationDataReader):
     """Feeds calibration images to the encoder for activation range collection."""
 
-    def __init__(self, calibration_dir: str, num_samples: int = 100):
+    def __init__(self, calibration_dir: str, num_samples: int = 100, use_fp16: bool = False):
         self.image_paths = sorted(Path(calibration_dir).glob("*"))
         self.image_paths = [
             p for p in self.image_paths
@@ -48,8 +48,9 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
             raise ValueError(f"No images found in {calibration_dir}")
 
         self.image_paths = self.image_paths[:num_samples]
+        self.use_fp16 = use_fp16
         self.index = 0
-        print(f"Calibration: {len(self.image_paths)} images from {calibration_dir}")
+        print(f"Calibration: {len(self.image_paths)} images from {calibration_dir} (fp16={use_fp16})")
 
     def get_next(self):
         if self.index >= len(self.image_paths):
@@ -63,6 +64,9 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
         arr = arr.transpose(2, 0, 1)  # HWC → CHW
         # [B=1, S=1, 3, 518, 518]
         arr = arr[np.newaxis, np.newaxis, ...]
+
+        if self.use_fp16:
+            arr = arr.astype(np.float16)
 
         return {"images": arr}
 
@@ -98,6 +102,14 @@ def main():
     print(f"Calibration method: {args.calibration_method}")
     print(f"Per-channel: {args.per_channel}")
 
+    # Detect model input dtype
+    import onnx
+    model = onnx.load(args.encoder_onnx, load_external_data=False)
+    input_type = model.graph.input[0].type.tensor_type.elem_type
+    use_fp16 = (input_type == onnx.TensorProto.FLOAT16)
+    del model
+    print(f"Model input dtype: {'float16' if use_fp16 else 'float32'}")
+
     # Preprocess: shape inference + graph optimization (reduces memory during calibration)
     preprocessed_path = str(Path(args.encoder_onnx).with_suffix(".preprocessed.onnx"))
     print("Preprocessing model (shape inference + optimization)...")
@@ -109,7 +121,7 @@ def main():
     print(f"  Preprocessed model saved to {preprocessed_path}")
 
     calibration_reader = EncoderCalibrationDataReader(
-        args.calibration_dir, num_samples=args.num_samples
+        args.calibration_dir, num_samples=args.num_samples, use_fp16=use_fp16
     )
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
