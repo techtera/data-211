@@ -72,10 +72,10 @@ def export_obj_decoder(checkpoint_path, output_path, opset):
     new_state = {k[len(decoder_prefix):]: v for k, v in state_dict.items()
                  if k.startswith(decoder_prefix)}
     decoder.load_state_dict(new_state)
-    decoder.eval()
+    decoder.float().eval()
 
     wrapper = ObjDecoderONNXWrapper(decoder)
-    wrapper.eval()
+    wrapper.float().eval()
 
     # Dummy inputs: aggregated tokens at each cached layer [B, S, Tokens, 2048]
     B, S, P = 1, 1, 1374  # 1 + 4 registers + 37*37 patches = 1374
@@ -112,10 +112,10 @@ def export_edge_decoder(checkpoint_path, output_path, opset):
         state_dict = ckpt["model_state_dict"] if "model_state_dict" in ckpt else ckpt
         decoder.load_state_dict(state_dict, strict=False)
 
-    decoder.eval()
+    decoder.float().eval()
 
     wrapper = EdgeDecoderONNXWrapper(decoder)
-    wrapper.eval()
+    wrapper.float().eval()
 
     B, S, P = 1, 1, 1374
     dummy_tokens = [torch.randn(B, S, P, 2048) for _ in range(4)]

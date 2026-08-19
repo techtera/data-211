@@ -25,11 +25,11 @@ except ImportError:
 IMAGE_SIZE = 518
 
 
-def get_providers():
+def get_providers(device_id=1):
     available = ort.get_available_providers()
     providers = []
     if "CUDAExecutionProvider" in available:
-        providers.append(("CUDAExecutionProvider", {"device_id": 1}))
+        providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
     providers.append("CPUExecutionProvider")
     return providers
 
