@@ -96,6 +96,7 @@ def main():
         per_channel=False,
         weight_type=QuantType.QInt8,
         activation_type=QuantType.QInt8,
+        op_types_to_quantize=["MatMul", "Gemm"],
         calibrate_method=CalibrationMethod.MinMax,
         use_external_data_format=True,
         calibration_providers=[
