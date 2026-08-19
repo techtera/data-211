@@ -71,11 +71,11 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
 
 def main():
     parser = argparse.ArgumentParser(description="INT8 quantize ONNX encoder")
-    parser.add_argument("--encoder_onnx", type=str, default="checkpoints/encoder.onnx",
+    parser.add_argument("--encoder_onnx", type=str, default="onnx_models/encoder.onnx",
                         help="Path to FP32/FP16 encoder ONNX model")
     parser.add_argument("--calibration_dir", type=str, required=True,
                         help="Directory of calibration images")
-    parser.add_argument("--output", type=str, default="checkpoints/encoder_int8.onnx",
+    parser.add_argument("--output", type=str, default="onnx_models/encoder_int8.onnx",
                         help="Output path for INT8 model")
     parser.add_argument("--num_samples", type=int, default=100,
                         help="Number of calibration images to use")

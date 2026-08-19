@@ -143,7 +143,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export decoders to ONNX")
     parser.add_argument("--obj_checkpoint", type=str, default=None)
     parser.add_argument("--edge_checkpoint", type=str, default=None)
-    parser.add_argument("--output_dir", type=str, default="checkpoints")
+    parser.add_argument("--output_dir", type=str, default="onnx_models")
     parser.add_argument("--opset", type=int, default=17)
     args = parser.parse_args()
 

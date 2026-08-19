@@ -1,5 +1,6 @@
 # Checkpoints and model weights
 checkpoints/
+onnx_models/
 *.pt
 *.pth
 *.onnx

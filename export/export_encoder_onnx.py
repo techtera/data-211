@@ -12,6 +12,7 @@ import sys
 import argparse
 from pathlib import Path
 
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
@@ -23,7 +24,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export VGGT Aggregator to ONNX")
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to full model checkpoint (extracts aggregator weights)")
-    parser.add_argument("--output", type=str, default="checkpoints/encoder.onnx")
+    parser.add_argument("--output", type=str, default="onnx_models/encoder.onnx")
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument("--fp16", action="store_true", help="Export in FP16")
     args = parser.parse_args()
@@ -54,6 +55,7 @@ def main():
     else:
         dummy = torch.randn(1, 1, 3, 518, 518)
 
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     print(f"Exporting to {args.output} (opset {args.opset})...")
 
     # The aggregator returns (list[Tensor|None], int).

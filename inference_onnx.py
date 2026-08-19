@@ -46,9 +46,9 @@ def main():
     parser = argparse.ArgumentParser(description="ONNX Runtime Unified Inference")
     parser.add_argument("--image", type=str, required=True)
     parser.add_argument("--task", type=str, default="both", choices=["obj", "edge", "both"])
-    parser.add_argument("--encoder_onnx", type=str, default="checkpoints/encoder.onnx")
-    parser.add_argument("--obj_onnx", type=str, default="checkpoints/obj_decoder.onnx")
-    parser.add_argument("--edge_onnx", type=str, default="checkpoints/edge_decoder.onnx")
+    parser.add_argument("--encoder_onnx", type=str, default="onnx_models/encoder_int8.onnx")
+    parser.add_argument("--obj_onnx", type=str, default="onnx_models/obj_decoder.onnx")
+    parser.add_argument("--edge_onnx", type=str, default="onnx_models/edge_decoder.onnx")
     args = parser.parse_args()
 
     providers = get_providers()
