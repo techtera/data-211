@@ -1,15 +1,19 @@
 """
-INT8 post-training quantization for the ONNX encoder using ONNX Runtime.
+INT8 quantization for the ONNX encoder using ONNX Runtime.
 
-Reads calibration images, runs them through the encoder to collect activation
-statistics, then produces a quantized INT8 .onnx file.
+Supports two modes:
+  --mode dynamic  (default) — quantizes weights only, no calibration needed, no OOM risk
+  --mode static             — quantizes weights + activations, needs calibration images + GPU memory
+
+Dynamic quantization is recommended for initial size reduction. For maximum INT8
+performance on Orin NX, use TensorRT INT8 calibration on-device.
 
 Usage:
-    python export/quantize_int8.py \
-        --encoder_onnx checkpoints/encoder.onnx \
-        --calibration_dir /path/to/calibration_images/ \
-        --output checkpoints/encoder_int8.onnx \
-        --num_samples 100
+    # Dynamic (no calibration needed):
+    python export/quantize_int8.py --encoder_onnx onnx_models/encoder.onnx
+
+    # Static (needs calibration images + enough RAM/VRAM):
+    python export/quantize_int8.py --mode static --calibration_dir rgb_reg/
 """
 
 import sys
@@ -23,6 +27,7 @@ from PIL import Image
 
 from onnxruntime.quantization import (
     quantize_static,
+    quantize_dynamic,
     CalibrationDataReader,
     QuantType,
     QuantFormat,
@@ -62,7 +67,6 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
         img = Image.open(img_path).convert("RGB").resize((IMAGE_SIZE, IMAGE_SIZE))
         arr = np.array(img, dtype=np.float32) / 255.0
         arr = arr.transpose(2, 0, 1)  # HWC → CHW
-        # [B=1, S=1, 3, 518, 518]
         arr = arr[np.newaxis, np.newaxis, ...]
 
         if self.use_fp16:
@@ -74,22 +78,39 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
         self.index = 0
 
 
-def main():
-    parser = argparse.ArgumentParser(description="INT8 quantize ONNX encoder")
-    parser.add_argument("--encoder_onnx", type=str, default="onnx_models/encoder.onnx",
-                        help="Path to FP32/FP16 encoder ONNX model")
-    parser.add_argument("--calibration_dir", type=str, required=True,
-                        help="Directory of calibration images")
-    parser.add_argument("--output", type=str, default="onnx_models/encoder_int8.onnx",
-                        help="Output path for INT8 model")
-    parser.add_argument("--num_samples", type=int, default=100,
-                        help="Number of calibration images to use")
-    parser.add_argument("--per_channel", action="store_true", default=True,
-                        help="Per-channel quantization (better accuracy, default)")
-    parser.add_argument("--calibration_method", type=str, default="entropy",
-                        choices=["entropy", "minmax", "percentile"],
-                        help="Calibration method for range estimation")
-    args = parser.parse_args()
+def run_dynamic(args):
+    """Dynamic quantization — weights only, no calibration, no OOM."""
+    print("Mode: DYNAMIC (weight-only quantization)")
+    print(f"Input model: {args.encoder_onnx}")
+    print(f"Output model: {args.output}")
+
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+
+    quantize_dynamic(
+        model_input=args.encoder_onnx,
+        model_output=args.output,
+        weight_type=QuantType.QInt8,
+        use_external_data_format=True,
+        extra_options={
+            "MatMulConstBOnly": True,
+        },
+    )
+
+    print_size_comparison(args.encoder_onnx, args.output)
+
+
+def run_static(args):
+    """Static quantization — weights + activations, needs calibration."""
+    import onnx
+
+    print("Mode: STATIC (weights + activations)")
+    print(f"Input model: {args.encoder_onnx}")
+    print(f"Output model: {args.output}")
+    print(f"Calibration method: {args.calibration_method}")
+
+    if not args.calibration_dir:
+        print("ERROR: --calibration_dir required for static mode")
+        sys.exit(1)
 
     calibration_methods = {
         "entropy": CalibrationMethod.Entropy,
@@ -97,28 +118,15 @@ def main():
         "percentile": CalibrationMethod.Percentile,
     }
 
-    print(f"Input model: {args.encoder_onnx}")
-    print(f"Output model: {args.output}")
-    print(f"Calibration method: {args.calibration_method}")
-    print(f"Per-channel: {args.per_channel}")
-
-    # Detect model input dtype
-    import onnx
     model = onnx.load(args.encoder_onnx, load_external_data=False)
     input_type = model.graph.input[0].type.tensor_type.elem_type
     use_fp16 = (input_type == onnx.TensorProto.FLOAT16)
     del model
     print(f"Model input dtype: {'float16' if use_fp16 else 'float32'}")
 
-    # Preprocess: shape inference + graph optimization (reduces memory during calibration)
     preprocessed_path = str(Path(args.encoder_onnx).with_suffix(".preprocessed.onnx"))
     print("Preprocessing model (shape inference + optimization)...")
-    quant_pre_process(
-        args.encoder_onnx,
-        preprocessed_path,
-        auto_merge=True,
-    )
-    print(f"  Preprocessed model saved to {preprocessed_path}")
+    quant_pre_process(args.encoder_onnx, preprocessed_path, auto_merge=True)
 
     calibration_reader = EncoderCalibrationDataReader(
         args.calibration_dir, num_samples=args.num_samples, use_fp16=use_fp16
@@ -131,7 +139,7 @@ def main():
         model_output=args.output,
         calibration_data_reader=calibration_reader,
         quant_format=QuantFormat.QDQ,
-        per_channel=args.per_channel,
+        per_channel=True,
         weight_type=QuantType.QInt8,
         activation_type=QuantType.QInt8,
         calibrate_method=calibration_methods[args.calibration_method],
@@ -142,22 +150,38 @@ def main():
         },
     )
 
-    # Calculate total size including external data files
-    output_dir = Path(args.output).parent
-    output_stem = Path(args.output).stem
-    total_output = sum(
-        f.stat().st_size for f in output_dir.iterdir()
-        if f.name.startswith(output_stem)
-    ) / (1024 ** 2)
+    print_size_comparison(args.encoder_onnx, args.output)
 
-    input_dir = Path(args.encoder_onnx).parent
-    input_stem = Path(args.encoder_onnx).stem
-    total_input = sum(
-        f.stat().st_size for f in input_dir.iterdir()
-        if f.name.startswith(input_stem)
-    ) / (1024 ** 2)
 
-    print(f"\nDone! {total_input:.0f} MB → {total_output:.0f} MB ({total_output/total_input:.1%})")
+def print_size_comparison(input_path, output_path):
+    def total_size(path):
+        parent = Path(path).parent
+        stem = Path(path).stem
+        return sum(
+            f.stat().st_size for f in parent.iterdir()
+            if f.name.startswith(stem)
+        ) / (1024 ** 2)
+
+    input_mb = total_size(input_path)
+    output_mb = total_size(output_path)
+    print(f"\nDone! {input_mb:.0f} MB → {output_mb:.0f} MB ({output_mb/input_mb:.1%})")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="INT8 quantize ONNX encoder")
+    parser.add_argument("--encoder_onnx", type=str, default="onnx_models/encoder.onnx")
+    parser.add_argument("--output", type=str, default="onnx_models/encoder_int8.onnx")
+    parser.add_argument("--mode", type=str, default="dynamic", choices=["dynamic", "static"])
+    parser.add_argument("--calibration_dir", type=str, default=None)
+    parser.add_argument("--num_samples", type=int, default=100)
+    parser.add_argument("--calibration_method", type=str, default="entropy",
+                        choices=["entropy", "minmax", "percentile"])
+    args = parser.parse_args()
+
+    if args.mode == "dynamic":
+        run_dynamic(args)
+    else:
+        run_static(args)
 
 
 if __name__ == "__main__":
