@@ -1,14 +1,8 @@
 """
-INT8 static quantization using GPU for calibration.
-
-Uses ONNX Runtime's lower-level calibration API with CUDAExecutionProvider
-so calibration inference runs on GPU (avoids CPU RAM OOM).
+INT8 static quantization with GPU-based calibration.
 
 Usage:
-    python export/quantize_int8_gpu.py \
-        --encoder_onnx onnx_models/encoder.onnx \
-        --calibration_dir rgb_reg/ \
-        --output onnx_models/encoder_int8.onnx
+    python export/quantize_int8_gpu.py --calibration_dir rgb_reg/
 """
 
 import sys
@@ -22,12 +16,12 @@ from PIL import Image
 import onnxruntime as ort
 
 from onnxruntime.quantization import (
+    quantize_static,
     CalibrationDataReader,
     QuantType,
     QuantFormat,
     CalibrationMethod,
 )
-from onnxruntime.quantization.calibrate import MinMaxCalibrater, EntropyCalibrater
 
 
 IMAGE_SIZE = 518
@@ -46,7 +40,8 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
 
         self.image_paths = self.image_paths[:num_samples]
         self.index = 0
-        print(f"Calibration: {len(self.image_paths)} images from {calibration_dir}")
+        self.total = len(self.image_paths)
+        print(f"Calibration: {self.total} images from {calibration_dir}")
 
     def get_next(self):
         if self.index >= len(self.image_paths):
@@ -56,7 +51,7 @@ class EncoderCalibrationDataReader(CalibrationDataReader):
         self.index += 1
 
         if self.index % 10 == 0 or self.index == 1:
-            print(f"  [{self.index}/{len(self.image_paths)}] {img_path.name}")
+            print(f"  [{self.index}/{self.total}] {img_path.name}")
 
         img = Image.open(img_path).convert("RGB").resize((IMAGE_SIZE, IMAGE_SIZE))
         arr = np.array(img, dtype=np.float32) / 255.0
@@ -74,81 +69,44 @@ def main():
     parser.add_argument("--calibration_dir", type=str, default="rgb_reg/")
     parser.add_argument("--output", type=str, default="onnx_models/encoder_int8.onnx")
     parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--calibration_method", type=str, default="minmax",
-                        choices=["entropy", "minmax", "percentile"])
     args = parser.parse_args()
 
     providers = ort.get_available_providers()
     print(f"Available providers: {providers}")
     if "CUDAExecutionProvider" not in providers:
         print("ERROR: CUDAExecutionProvider not available.")
-        print("Install onnxruntime-gpu: pip install onnxruntime-gpu")
+        print("Install: pip install onnxruntime-gpu")
         sys.exit(1)
 
-    calibration_methods = {
-        "entropy": CalibrationMethod.Entropy,
-        "minmax": CalibrationMethod.MinMax,
-        "percentile": CalibrationMethod.Percentile,
-    }
+    print(f"Input:  {args.encoder_onnx}")
+    print(f"Output: {args.output}")
 
-    print(f"Input model: {args.encoder_onnx}")
-    print(f"Output model: {args.output}")
-    print(f"Calibration method: {args.calibration_method}")
-
-    # Step 1: Calibrate on GPU
-    print(f"\n[1/2] Running calibration on GPU ({args.num_samples} images)...")
-    gpu_providers = [
-        ("CUDAExecutionProvider", {"device_id": 1}),
-        "CPUExecutionProvider",
-    ]
-
-    CalibratorClass = MinMaxCalibrater if args.calibration_method == "minmax" else EntropyCalibrater
-    calibrator = CalibratorClass(
-        args.encoder_onnx,
-        op_types_to_calibrate=None,
-        augmented_model_path=str(Path(args.encoder_onnx).with_suffix(".augmented.onnx")),
-        use_external_data_format=True,
-        symmetric=True,
-        providers=gpu_providers,
-    )
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
     data_reader = EncoderCalibrationDataReader(
         args.calibration_dir, num_samples=args.num_samples
     )
-    calibrator.collect_data(data_reader)
-    tensors_range = calibrator.compute_data()
-    print(f"  Collected ranges for {len(tensors_range)} tensors")
 
-    # Step 2: Quantize with pre-computed ranges
-    print(f"\n[2/2] Applying INT8 quantization...")
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-
-    from onnxruntime.quantization.onnx_quantizer import ONNXQuantizer
-    from onnxruntime.quantization.registry import IntegerOpsRegistry, QDQRegistry
-    import onnx
-
-    model = onnx.load(args.encoder_onnx)
-
-    quantizer = ONNXQuantizer(
-        model=model,
+    print("\nRunning quantize_static with CUDAExecutionProvider...")
+    quantize_static(
+        model_input=args.encoder_onnx,
+        model_output=args.output,
+        calibration_data_reader=data_reader,
+        quant_format=QuantFormat.QDQ,
         per_channel=True,
-        reduce_range=False,
-        mode=QuantFormat.QDQ,
-        static=True,
-        weight_qType=QuantType.QInt8,
-        activation_qType=QuantType.QInt8,
-        tensors_range=tensors_range,
-        nodes_to_quantize=[],
-        nodes_to_exclude=[],
-        op_types_to_quantize=list(QDQRegistry.keys()),
+        weight_type=QuantType.QInt8,
+        activation_type=QuantType.QInt8,
+        calibrate_method=CalibrationMethod.MinMax,
+        use_external_data_format=True,
+        calibration_providers=[
+            ("CUDAExecutionProvider", {"device_id": 1}),
+            "CPUExecutionProvider",
+        ],
         extra_options={
             "ActivationSymmetric": True,
             "WeightSymmetric": True,
         },
     )
-
-    quantizer.quantize_model()
-    quantizer.model.save_model_to_file(args.output, use_external_data_format=True)
 
     # Size comparison
     def total_size(path):
