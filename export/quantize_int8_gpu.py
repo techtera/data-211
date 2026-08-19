@@ -104,7 +104,7 @@ def main():
 
     CalibratorClass = MinMaxCalibrater if args.calibration_method == "minmax" else EntropyCalibrater
     calibrator = CalibratorClass(
-        model=args.encoder_onnx,
+        args.encoder_onnx,
         op_types_to_calibrate=None,
         augmented_model_path=str(Path(args.encoder_onnx).with_suffix(".augmented.onnx")),
         use_external_data_format=True,
