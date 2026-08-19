@@ -97,7 +97,7 @@ def main():
     calibrator = create_calibrator(
         model=args.encoder_onnx,
         op_types_to_calibrate=None,
-        augmented_model_path=str(Path(preprocessed_path).with_suffix(".augmented.onnx")),
+        augmented_model_path=str(Path(args.encoder_onnx).with_suffix(".augmented.onnx")),
         calibrate_method=calibration_methods[args.calibration_method],
         use_external_data_format=True,
         extra_options={
