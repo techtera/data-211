@@ -1,6 +1,6 @@
 # VGGT + UNet++ Edge Masking
-
-## Project Overview
+  
+## Project Overview. 
 
 Edge mask prediction model using a frozen VGGT encoder (ViT-L) and a custom UNet++ decoder. Predicts binary edge masks from 518x518 images. Not semantic segmentation — the goal is sharp, continuous boundary reconstruction under severe class imbalance (1-10% edge pixels).
 
