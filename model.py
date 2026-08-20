@@ -187,7 +187,24 @@ class VGGTUnified(nn.Module):
         if fp16:
             state_dict = {k: v.float() for k, v in state_dict.items()}
 
-        self.load_state_dict(state_dict)
+        # Load with strict=False to allow truncated models (ignoring extra blocks)
+        missing_keys, unexpected_keys = self.load_state_dict(state_dict, strict=False)
+
+        if unexpected_keys:
+            # Count how many blocks are being ignored
+            ignored_frame_blocks = set()
+            ignored_global_blocks = set()
+            for key in unexpected_keys:
+                if 'frame_blocks.' in key:
+                    block_num = int(key.split('frame_blocks.')[1].split('.')[0])
+                    ignored_frame_blocks.add(block_num)
+                elif 'global_blocks.' in key:
+                    block_num = int(key.split('global_blocks.')[1].split('.')[0])
+                    ignored_global_blocks.add(block_num)
+
+            if ignored_frame_blocks or ignored_global_blocks:
+                print(f"  Ignored {len(ignored_frame_blocks)} frame blocks and {len(ignored_global_blocks)} global blocks from checkpoint")
+
         self.aggregator.eval()
         self.aggregator.requires_grad_(False)
 
