@@ -70,22 +70,29 @@ def modify_aggregator(depth, cached_layers):
         lines = f.readlines()
 
     modified = False
+    in_init_signature = False
 
     for i, line in enumerate(lines):
-        # Look for depth parameter in __init__
-        if 'depth=' in line and i < 100:  # Should be near top
+        # Track if we're in __init__ signature
+        if 'def __init__(' in line:
+            in_init_signature = True
+        elif in_init_signature and '):' in line:
+            in_init_signature = False
+
+        # Look for depth parameter in __init__ (only in signature, not body)
+        if in_init_signature and 'depth=' in line and 'self.depth' not in line:
             # Check if it's one of the known depth values
             for d in [24, 22, 20, 18, 16]:
-                if f'depth={d}' in line:
+                if f'depth={d}' in line or f'depth = {d}' in line:
                     old_line = line
-                    lines[i] = line.replace(f'depth={d}', f'depth={depth}')
+                    lines[i] = line.replace(f'depth={d}', f'depth={depth}').replace(f'depth = {d}', f'depth={depth}')
                     if lines[i] != old_line:
                         print(f"✏️  Line {i+1}: depth={depth}")
                         modified = True
                     break
 
-        # Look for cached_layer_indices
-        if 'cached_layer_indices' in line and '=' in line:
+        # Look for cached_layer_indices ONLY in __init__ parameter definition
+        if in_init_signature and 'cached_layer_indices' in line and 'self.' not in line:
             # Check if it contains a tuple with layer indices
             if '(' in line and ')' in line:
                 old_line = line
@@ -152,6 +159,44 @@ def modify_segformer_head(cached_layers):
         return False
 
 
+def modify_edge_feature_projections(cached_layers):
+    """Modify decoders/edge_mask/feature_projections.py."""
+    filepath = Path("decoders/edge_mask/feature_projections.py")
+
+    if not filepath.exists():
+        print(f"❌ File not found: {filepath}")
+        return False
+
+    backup_file(filepath)
+
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+
+    modified = False
+
+    for i, line in enumerate(lines):
+        # Look for layer_indices in __init__
+        if 'self.layer_indices' in line and '=' in line and '[' in line:
+            old_line = line
+            indent = len(line) - len(line.lstrip())
+            new_layers_str = ', '.join(map(str, cached_layers))
+            lines[i] = ' ' * indent + f"self.layer_indices = [{new_layers_str}]\n"
+
+            if lines[i] != old_line:
+                print(f"✏️  Line {i+1}: layer_indices={cached_layers}")
+                modified = True
+            break
+
+    if modified:
+        with open(filepath, 'w') as f:
+            f.writelines(lines)
+        print(f"✅ Modified: {filepath}")
+        return True
+    else:
+        print(f"⚠️  No changes in: {filepath}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Apply VGGT truncation")
     parser.add_argument("--depth", type=int, choices=[24, 22, 20, 18, 16],
@@ -166,8 +211,9 @@ def main():
         print("="*70)
         restored1 = restore_file("encoder/aggregator.py")
         restored2 = restore_file("decoders/obj_mask/segformer_head.py")
+        restored3 = restore_file("decoders/edge_mask/feature_projections.py")
 
-        if restored1 or restored2:
+        if restored1 or restored2 or restored3:
             print("\n✅ Restoration complete")
         else:
             print("\n⚠️  No backups found")
@@ -191,10 +237,12 @@ def main():
     success1 = modify_aggregator(depth, cached_layers)
     print()
     success2 = modify_segformer_head(cached_layers)
+    print()
+    success3 = modify_edge_feature_projections(cached_layers)
 
     print()
     print("="*70)
-    if success1 or success2:
+    if success1 or success2 or success3:
         print("✅ TRUNCATION APPLIED")
         print("="*70)
         print()
