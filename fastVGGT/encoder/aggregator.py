@@ -337,8 +337,10 @@ class Aggregator(nn.Module):
             # Handle positions
             if pos is not None:
                 if self.disable_rope_for_merging:
-                    # Disable positional embeddings when merging (safer)
-                    pos = None
+                    # Create zero positions for merged tokens (disables RoPE effectively)
+                    # Zero positions = no positional information, but avoids None crash
+                    num_merged = tokens.shape[1]  # tokens already merged at this point
+                    pos = torch.zeros(B, num_merged, 2, dtype=pos.dtype, device=pos.device)
                 else:
                     # Select positions for kept tokens (experimental, may cause issues)
                     dst_mask = merge_info['dst_mask']
