@@ -179,8 +179,9 @@ def run_inference(
 
     # Enable FastVGGT if requested
     if use_fastvggt:
-        model.aggregator.enable_token_merging(merge_ratio=merge_ratio)
-        print(f"✓ FastVGGT enabled (merge_ratio={merge_ratio})")
+        # disable_rope=True for stability (RoPE + merging can cause issues)
+        model.aggregator.enable_token_merging(merge_ratio=merge_ratio, disable_rope=True)
+        print(f"✓ FastVGGT enabled (merge_ratio={merge_ratio}, RoPE disabled for stability)")
 
     print()
 

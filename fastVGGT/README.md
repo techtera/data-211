@@ -40,8 +40,8 @@ from model import VGGTUnified
 model = VGGTUnified(load_encoder=False)
 model.load_unified_checkpoint('checkpoints/vggt_unified_fp16.pt')
 
-# Enable FastVGGT (one line!)
-model.aggregator.enable_token_merging(merge_ratio=0.9)
+# Enable FastVGGT (disable_rope=True for stability)
+model.aggregator.enable_token_merging(merge_ratio=0.9, disable_rope=True)
 
 # Run inference (now 3-4x faster)
 results = model(images, task='cascade')
@@ -104,18 +104,23 @@ Longer sequences = more speedup (attention is O(N²))
 ## Tuning
 
 ```python
-# Default (recommended)
-model.aggregator.enable_token_merging(merge_ratio=0.9)
+# Default (recommended - disables RoPE for stability)
+model.aggregator.enable_token_merging(merge_ratio=0.9, disable_rope=True)
 
 # Max speed (slight quality loss)
-model.aggregator.enable_token_merging(merge_ratio=0.95)
+model.aggregator.enable_token_merging(merge_ratio=0.95, disable_rope=True)
 
 # Max quality (still faster)
-model.aggregator.enable_token_merging(merge_ratio=0.8)
+model.aggregator.enable_token_merging(merge_ratio=0.8, disable_rope=True)
+
+# Experimental: Keep RoPE enabled (may cause shape issues)
+model.aggregator.enable_token_merging(merge_ratio=0.9, disable_rope=False)
 
 # Disable
 model.aggregator.disable_token_merging()
 ```
+
+**Note:** `disable_rope=True` is recommended. RoPE (positional embeddings) + token merging can cause shape mismatches because position information gets "merged" with tokens.
 
 ---
 

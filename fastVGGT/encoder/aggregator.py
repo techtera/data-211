@@ -156,6 +156,7 @@ class Aggregator(nn.Module):
         self.use_token_merging = False
         self.token_merger = None
         self.merging_config = None
+        self.disable_rope_for_merging = False
 
     def __build_patch_embed__(
         self,
@@ -333,23 +334,23 @@ class Aggregator(nn.Module):
                 tokens, frame_idx, S, P
             )
 
-            # Handle positions: select positions for kept tokens (dst + salient)
+            # Handle positions
             if pos is not None:
-                # Extract masks from merge_info
-                dst_mask = merge_info['dst_mask']  # [B, N]
-                salient_mask = merge_info['salient_mask']  # [B, N]
-                kept_mask = dst_mask | salient_mask  # Tokens we kept
+                if self.disable_rope_for_merging:
+                    # Disable positional embeddings when merging (safer)
+                    pos = None
+                else:
+                    # Select positions for kept tokens (experimental, may cause issues)
+                    dst_mask = merge_info['dst_mask']
+                    salient_mask = merge_info['salient_mask']
+                    kept_mask = dst_mask | salient_mask
 
-                # Select positions for kept tokens
-                # pos shape: [B, N, 2], kept_mask shape: [B, N]
-                kept_positions = []
-                for b in range(B):
-                    kept_pos = pos[b][kept_mask[b]]  # [N_kept, 2]
-                    kept_positions.append(kept_pos)
+                    kept_positions = []
+                    for b in range(B):
+                        kept_pos = pos[b][kept_mask[b]]
+                        kept_positions.append(kept_pos)
 
-                # Stack back to batch
-                # Note: All batches should have same number of kept tokens
-                pos = torch.stack(kept_positions, dim=0)  # [B, N_kept, 2]
+                    pos = torch.stack(kept_positions, dim=0)
 
         # Process attention blocks
         for _ in range(self.aa_block_size):
@@ -357,12 +358,15 @@ class Aggregator(nn.Module):
                 tokens = checkpoint(self.global_blocks[global_idx], tokens, pos, use_reentrant=self.use_reentrant)
             else:
                 tokens = self.global_blocks[global_idx](tokens, pos=pos)
+
             global_idx += 1
 
-            # FastVGGT: Unmerge tokens after attention for dense prediction
+            # FastVGGT: For intermediates, always unmerge to get full resolution
             if apply_merging and merge_info is not None:
-                unmerged_tokens = self.token_merger.unmerge_tokens(tokens, merge_info)
-                intermediates.append(unmerged_tokens.view(B, S, P, C))
+                # Unmerge for storing intermediate (decoder needs full resolution)
+                unmerged_for_output = self.token_merger.unmerge_tokens(tokens, merge_info)
+                intermediates.append(unmerged_for_output.view(B, S, P, C))
+                # Keep tokens merged for next iteration (stays merged in the loop)
             else:
                 intermediates.append(tokens.view(B, S, P, C))
 
@@ -377,6 +381,7 @@ class Aggregator(nn.Module):
         merge_ratio: float = 0.9,
         salient_stride: int = 10,
         apply_from_block: int = 0,
+        disable_rope: bool = False,
     ):
         """
         Enable FastVGGT token merging for inference acceleration.
@@ -385,6 +390,7 @@ class Aggregator(nn.Module):
             merge_ratio: Fraction of tokens to merge (0.9 = merge 90%, default from paper)
             salient_stride: Stride for salient token selection (10 = ~10% retained)
             apply_from_block: Start merging from this block (0 = all blocks)
+            disable_rope: If True, disable RoPE when merging (recommended for stability)
 
         Example:
             >>> model = VGGTUnified()
@@ -399,8 +405,16 @@ class Aggregator(nn.Module):
         )
         self.token_merger = TokenMerger(self.merging_config)
         self.use_token_merging = True
-        logger.info(f"FastVGGT token merging enabled: merge_ratio={merge_ratio}, "
-                   f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
+        self.disable_rope_for_merging = disable_rope
+
+        if disable_rope:
+            logger.info(f"FastVGGT token merging enabled (RoPE disabled): merge_ratio={merge_ratio}, "
+                       f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
+        else:
+            logger.info(f"FastVGGT token merging enabled (RoPE active): merge_ratio={merge_ratio}, "
+                       f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
+            logger.warning("Token merging with RoPE may cause instability. "
+                          "Consider using disable_rope=True if you encounter issues.")
 
     def disable_token_merging(self):
         """Disable FastVGGT token merging to return to standard inference."""
