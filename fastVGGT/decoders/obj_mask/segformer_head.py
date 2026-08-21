@@ -520,9 +520,11 @@ class DPTHead(nn.Module):
         # print("\nUpsampled Output Shape")
         # print(mask_logits.shape)
         ####################################################################
-        #   [B*S, C, H, W]
+        #   [B*S, C, H, W] -> [B, S, C, H, W]
         ####################################################################
 
+        # Reshape to restore batch dimension for chunked inference
+        mask_logits = mask_logits.view(B, S, -1, H, W)
 
         return mask_logits
     
