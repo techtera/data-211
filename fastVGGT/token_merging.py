@@ -163,13 +163,23 @@ class TokenMerger:
         # Find most similar dst token for each src token
         src_to_dst_idx = similarity.argmax(dim=2)  # [B, N_src]
 
-        # Merge by averaging
+        # Merge by averaging - FULLY VECTORIZED for GPU efficiency
         merged_tokens = dst_tokens.clone()
-        for b in range(B):
-            for s in range(N_src):
-                dst_idx = src_to_dst_idx[b, s].item()
-                # Average the src token into its matched dst token
-                merged_tokens[b, dst_idx] = (merged_tokens[b, dst_idx] + src_tokens[b, s]) / 2.0
+
+        # Expand src_to_dst_idx to match the channel dimension for scatter operations
+        src_to_dst_idx_expanded = src_to_dst_idx.unsqueeze(-1).expand(-1, -1, C)
+
+        # Accumulate src tokens into dst positions
+        merged_tokens.scatter_add_(1, src_to_dst_idx_expanded, src_tokens)
+
+        # Count how many src tokens were merged into each dst token
+        counts = torch.zeros(B, N_dst, 1, device=dst_tokens.device)
+        ones = torch.ones(B, N_src, 1, device=dst_tokens.device)
+        counts.scatter_add_(1, src_to_dst_idx.unsqueeze(-1), ones)
+
+        # Average: (dst + sum(srcs)) / (1 + num_srcs)
+        # Add 1 for the original dst token
+        merged_tokens = merged_tokens / (counts + 1.0)
 
         return merged_tokens, src_to_dst_idx
 
@@ -240,19 +250,19 @@ class TokenMerger:
         salient_mask = merge_info['salient_mask']
         src_to_dst_idx = merge_info['src_to_dst_mapping']
 
-        # Place dst tokens
+        # Place dst tokens (vectorized)
         x_reconstructed[dst_mask] = merged_dst.reshape(-1, C)
 
-        # Place salient tokens
+        # Place salient tokens (vectorized)
         x_reconstructed[salient_mask] = salient_tokens.reshape(-1, C)
 
-        # Replicate merged dst values for src positions
-        for b in range(B):
-            src_positions = torch.where(src_mask[b])[0]
-            for i, src_pos in enumerate(src_positions):
-                if i < src_to_dst_idx.shape[1]:
-                    dst_idx = src_to_dst_idx[b, i].item()
-                    x_reconstructed[b, src_pos] = merged_dst[b, dst_idx]
+        # Replicate merged dst values for src positions (vectorized)
+        # Use advanced indexing to gather values from merged_dst based on src_to_dst_idx
+        B_indices = torch.arange(B, device=device).unsqueeze(1).expand(-1, src_to_dst_idx.shape[1])
+        src_values = merged_dst[B_indices, src_to_dst_idx]  # [B, N_src, C]
+
+        # Place src values back using src_mask
+        x_reconstructed[src_mask] = src_values.reshape(-1, C)
 
         return x_reconstructed
 
