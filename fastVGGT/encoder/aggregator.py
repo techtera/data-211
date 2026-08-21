@@ -367,7 +367,21 @@ class Aggregator(nn.Module):
             if apply_merging and merge_info is not None:
                 # Unmerge for storing intermediate (decoder needs full resolution)
                 unmerged_for_output = self.token_merger.unmerge_tokens(tokens, merge_info)
-                intermediates.append(unmerged_for_output.view(B, S, P, C))
+                # unmerged_for_output has shape [B, N, C] where N should equal S*P
+                expected_N = S * P
+                actual_N = unmerged_for_output.shape[1]
+
+                if actual_N != expected_N:
+                    # Shape mismatch - this is the bug!
+                    logger.error(f"Unmerge shape mismatch: expected {expected_N} tokens but got {actual_N}")
+                    logger.error(f"B={B}, S={S}, P={P}, C={C}")
+                    logger.error(f"Merged tokens shape: {tokens.shape}")
+                    logger.error(f"Unmerged tokens shape: {unmerged_for_output.shape}")
+                    raise RuntimeError(f"Token unmerge failed: expected {expected_N} tokens, got {actual_N}")
+
+                # Reshape to [B, S, P, C]
+                unmerged_for_output = unmerged_for_output.view(B, S, P, C)
+                intermediates.append(unmerged_for_output)
                 # Keep tokens merged for next iteration (stays merged in the loop)
             else:
                 intermediates.append(tokens.view(B, S, P, C))
