@@ -342,17 +342,22 @@ class Aggregator(nn.Module):
                     num_merged = tokens.shape[1]  # tokens already merged at this point
                     pos = torch.zeros(B, num_merged, 2, dtype=pos.dtype, device=pos.device)
                 else:
-                    # Select positions for kept tokens (experimental, may cause issues)
+                    # Select positions for kept tokens in the same order as merged tokens
+                    # Merged tokens order: [merged_dst, salient_tokens]
                     dst_mask = merge_info['dst_mask']
                     salient_mask = merge_info['salient_mask']
-                    kept_mask = dst_mask | salient_mask
 
-                    kept_positions = []
+                    # Extract positions separately to match token ordering
+                    dst_positions = []
+                    salient_positions = []
                     for b in range(B):
-                        kept_pos = pos[b][kept_mask[b]]
-                        kept_positions.append(kept_pos)
+                        dst_pos = pos[b][dst_mask[b]]  # Positions for dst tokens
+                        salient_pos = pos[b][salient_mask[b]]  # Positions for salient tokens
+                        # Concatenate in same order as tokens: [dst, salient]
+                        kept_pos = torch.cat([dst_pos, salient_pos], dim=0)
+                        dst_positions.append(kept_pos)
 
-                    pos = torch.stack(kept_positions, dim=0)
+                    pos = torch.stack(dst_positions, dim=0)
 
         # Process attention blocks
         for _ in range(self.aa_block_size):
