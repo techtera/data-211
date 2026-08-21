@@ -315,6 +315,7 @@ class Aggregator(nn.Module):
 
         intermediates = []
         merge_info = None
+        original_pos = pos  # Save original positions
 
         # FastVGGT: Apply token merging if enabled and block index is eligible
         apply_merging = (
@@ -332,12 +333,23 @@ class Aggregator(nn.Module):
                 tokens, frame_idx, S, P
             )
 
-            # Adjust positions if RoPE is used
+            # Handle positions: select positions for kept tokens (dst + salient)
             if pos is not None:
-                # For merged tokens, we need to select corresponding positions
-                # For now, we'll disable position embedding for merged tokens
-                # as it's complex to handle correctly
-                pos = None
+                # Extract masks from merge_info
+                dst_mask = merge_info['dst_mask']  # [B, N]
+                salient_mask = merge_info['salient_mask']  # [B, N]
+                kept_mask = dst_mask | salient_mask  # Tokens we kept
+
+                # Select positions for kept tokens
+                # pos shape: [B, N, 2], kept_mask shape: [B, N]
+                kept_positions = []
+                for b in range(B):
+                    kept_pos = pos[b][kept_mask[b]]  # [N_kept, 2]
+                    kept_positions.append(kept_pos)
+
+                # Stack back to batch
+                # Note: All batches should have same number of kept tokens
+                pos = torch.stack(kept_positions, dim=0)  # [B, N_kept, 2]
 
         # Process attention blocks
         for _ in range(self.aa_block_size):
