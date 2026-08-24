@@ -155,7 +155,8 @@ def main():
         save_best=True,
         log_every=5,
         checkpoint_dir=args.checkpoint_dir,
-        device=args.device
+        device=args.device,
+        use_multi_gpu=False  # Disable multi-GPU for sanity check (avoids device mismatch issues)
     )
 
     # Loss function
