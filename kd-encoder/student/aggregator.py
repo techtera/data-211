@@ -192,20 +192,40 @@ class StudentAggregator(nn.Module):
         # Alternating attention: process frame and global in sequence
         output_list = []
 
+        # Use gradient checkpointing to save memory (trades compute for memory)
+        # Only keep activations for cached layers, recompute others during backward
+        use_checkpointing = self.training  # Only during training
+
         for layer_idx in range(self.depth):
-            # Frame attention: operates on [B*S, P, C]
-            tokens_frame = self.frame_blocks[layer_idx](tokens, pos=pos)
+            if use_checkpointing and layer_idx not in self.cached_layer_indices:
+                # Checkpoint non-cached layers (recompute during backward)
+                from torch.utils.checkpoint import checkpoint
 
-            # Global attention: operates on [B, S*P, C]
-            tokens_global = tokens_frame.view(B, S * P, C)
-            if pos is not None:
-                pos_global = pos.view(B, S * P, 2)
+                def frame_global_block(tokens_input, pos_input):
+                    # Frame attention
+                    tokens_f = self.frame_blocks[layer_idx](tokens_input, pos=pos_input)
+                    # Global attention
+                    tokens_g = tokens_f.view(B, S * P, C)
+                    pos_g = pos_input.view(B, S * P, 2) if pos_input is not None else None
+                    tokens_g = self.global_blocks[layer_idx](tokens_g, pos=pos_g)
+                    return tokens_g.view(B * S, P, C)
+
+                tokens = checkpoint(frame_global_block, tokens, pos, use_reentrant=False)
             else:
-                pos_global = None
-            tokens_global = self.global_blocks[layer_idx](tokens_global, pos=pos_global)
+                # Normal forward for cached layers (need to cache activations)
+                # Frame attention: operates on [B*S, P, C]
+                tokens_frame = self.frame_blocks[layer_idx](tokens, pos=pos)
 
-            # Reshape back to [B*S, P, C]
-            tokens = tokens_global.view(B * S, P, C)
+                # Global attention: operates on [B, S*P, C]
+                tokens_global = tokens_frame.view(B, S * P, C)
+                if pos is not None:
+                    pos_global = pos.view(B, S * P, 2)
+                else:
+                    pos_global = None
+                tokens_global = self.global_blocks[layer_idx](tokens_global, pos=pos_global)
+
+                # Reshape back to [B*S, P, C]
+                tokens = tokens_global.view(B * S, P, C)
 
             # Cache outputs if this is a cached layer
             if layer_idx in self.cached_layer_indices:
