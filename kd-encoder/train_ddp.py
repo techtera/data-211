@@ -84,7 +84,7 @@ def train_ddp(rank, world_size, args):
         from training.dataset import ImageDataset
         dataset = ImageDataset(
             image_dir=args.image_dir,
-            num_frames=8,
+            num_frames=1,  # Single frame per sample (images are unrelated)
             image_size=518
         )
 
