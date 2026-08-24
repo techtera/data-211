@@ -59,14 +59,29 @@ def profile_memory():
     images = torch.randn(batch_size, num_frames, 3, 518, 518, device=device)
     print_memory("After creating images")
 
-    # Forward teacher
-    print("\n[5] Forward teacher...")
+    # Forward teacher (memory-efficient: sample immediately)
+    print("\n[5] Forward teacher and sample...")
+    from distillation import sample_tokens, sample_tokens_with_indices
+
     with torch.no_grad():
         teacher_features, _ = teacher(images)
-    teacher_features = [f for f in teacher_features if f is not None]
-    print(f"  Teacher features: {len(teacher_features)} layers")
-    print(f"  Shape per layer: {teacher_features[0].shape}")
-    print_memory("After teacher forward")
+        teacher_features = [f for f in teacher_features if f is not None]
+        print(f"  Teacher features: {len(teacher_features)} layers")
+        print(f"  Shape per layer: {teacher_features[0].shape}")
+        print_memory("After teacher forward")
+
+        # Sample immediately to reduce memory
+        teacher_sampled = []
+        teacher_indices = []
+        for t_feat in teacher_features:
+            t_s, indices = sample_tokens(t_feat)
+            teacher_sampled.append(t_s.detach())
+            teacher_indices.append(indices)
+
+        # Clear teacher features
+        del teacher_features
+        torch.cuda.empty_cache()
+        print_memory("After teacher sampling + clear")
 
     # Forward student
     print("\n[6] Forward student...")
@@ -76,18 +91,17 @@ def profile_memory():
     print(f"  Shape per layer: {student_features[0].shape}")
     print_memory("After student forward")
 
-    # Sample tokens
-    print("\n[7] Sampling tokens...")
-    from distillation import sample_tokens, sample_tokens_with_indices
-    teacher_sampled = []
+    # Sample student tokens
+    print("\n[7] Sampling student tokens...")
     student_sampled = []
-    for i in range(len(teacher_features)):
-        t_s, indices = sample_tokens(teacher_features[i])
-        teacher_sampled.append(t_s)
-        s_s = sample_tokens_with_indices(student_features[i], indices)
+    for i, s_feat in enumerate(student_features):
+        s_s = sample_tokens_with_indices(s_feat, teacher_indices[i])
         student_sampled.append(s_s)
+
+    # Clear student features
+    del student_features
     print(f"  Sampled shape: {teacher_sampled[0].shape}")
-    print_memory("After token sampling")
+    print_memory("After student sampling")
 
     # Compute loss
     print("\n[8] Computing loss...")
@@ -100,6 +114,11 @@ def profile_memory():
     loss.backward()
     print_memory("After backward")
 
+    # Clear
+    del teacher_sampled, student_sampled, loss
+    torch.cuda.empty_cache()
+    print_memory("After clearing + cache")
+
     # Peak memory
     print("\n" + "="*60)
     peak = torch.cuda.max_memory_allocated() / 1024**3
@@ -107,30 +126,23 @@ def profile_memory():
     print("="*60)
 
     # Memory breakdown
-    print("\nMemory breakdown estimates:")
-    print(f"  Teacher params (909M × 2 bytes FP16): ~1.8GB")
-    print(f"  Student params (255M × 4 bytes FP32): ~1.0GB")
-    print(f"  Projection (12.6M × 4 bytes): ~0.05GB")
-    print(f"  Images batch (4×8×3×518×518 × 4): ~0.10GB")
-    print(f"  Teacher features (4×4×8×1374×2048 × 2): ~1.4GB")
-    print(f"  Student features (4×4×8×1374×1536 × 4): ~1.0GB")
-    print(f"  After sampling (4×4×8×133×2048 × 2): ~0.14GB")
-    print(f"  Gradients (student + projection): ~1.0GB")
-    print(f"  Optimizer states (2× params): ~2.0GB")
+    print("\nMemory analysis:")
+    print(f"  Batch size: 4")
+    print(f"  Memory per sample: {peak/4:.2f}GB")
     print(f"  ---")
-    print(f"  Expected total: ~8-10GB")
-    print(f"  Actual peak: {peak:.2f}GB")
+    print(f"  For 2 GPUs with batch_size=8 per GPU:")
+    print(f"  Expected per GPU: ~{peak/4*8:.1f}GB")
 
-    if peak > 20:
-        print("\n⚠️  WARNING: Memory usage is much higher than expected!")
-        print("Possible causes:")
-        print("  1. Keeping intermediate activations from all layers")
-        print("  2. Not releasing teacher features before student forward")
-        print("  3. Accumulating gradients across steps")
-        print("\nSolutions:")
-        print("  1. Use gradient checkpointing")
-        print("  2. Clear cache after each step")
-        print("  3. Reduce batch size")
+    if peak < 20:
+        print(f"\n✅ GOOD: Memory usage is acceptable!")
+        print(f"   You can use batch_size=8-12 per GPU with 80GB A100")
+    elif peak < 35:
+        print(f"\n⚠️  MODERATE: Memory usage is higher than ideal but workable")
+        print(f"   Recommended: batch_size=6-8 per GPU")
+        print(f"   With gradient checkpointing: Memory will be more efficient during training")
+    else:
+        print(f"\n❌ HIGH: Memory usage is too high")
+        print(f"   Reduce batch_size or investigate further")
 
 
 if __name__ == '__main__':
