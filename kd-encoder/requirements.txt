@@ -1,0 +1,10 @@
+# VGGT Encoder Knowledge Distillation - Phase 0A Requirements
+
+# Core dependencies
+torch>=2.0.0
+numpy>=1.24.0
+
+# Optional: For better progress bars and logging
+tqdm>=4.65.0
+
+# Note: DINOv2 is loaded via torch.hub (no separate install needed)
