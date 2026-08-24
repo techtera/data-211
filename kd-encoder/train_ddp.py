@@ -63,7 +63,11 @@ def train_ddp(rank, world_size, args):
         if is_main_process():
             print("\n[1] Loading teacher...")
         teacher = load_real_teacher(args.teacher_checkpoint, device)
-        teacher = DDP(teacher, device_ids=[rank])
+
+        # Wrap with FeaturesOnlyWrapper (NO DDP - teacher has no trainable params)
+        from training.trainer import FeaturesOnlyWrapper
+        teacher = FeaturesOnlyWrapper(teacher)
+        # Don't wrap with DDP - teacher is frozen!
 
         # Initialize student
         if is_main_process():
