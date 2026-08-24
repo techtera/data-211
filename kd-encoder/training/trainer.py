@@ -113,10 +113,11 @@ class DistillationTrainer:
         student = student.to(device).train()
         loss_fn = loss_fn.to(device).train()
 
-        # Wrap with DataParallel if multi-GPU
+        # Wrap encoders with DataParallel if multi-GPU
+        # NOTE: loss_fn should NOT be wrapped - it operates on features, not images
         self.teacher, self.num_gpus_teacher, self.gpu_ids = setup_multi_gpu(teacher, config, device)
         self.student, self.num_gpus_student, _ = setup_multi_gpu(student, config, device)
-        self.loss_fn, self.num_gpus_loss, _ = setup_multi_gpu(loss_fn, config, device)
+        self.loss_fn = loss_fn  # Keep on single device
 
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -287,10 +288,11 @@ class DistillationTrainer:
             if self.is_multi_gpu:
                 # Unwrap: DataParallel -> FeaturesOnlyWrapper -> actual model
                 student_to_save = self.student.module.model
-                projection_to_save = self.loss_fn.module.projection
             else:
                 student_to_save = self.student
-                projection_to_save = self.loss_fn.projection
+
+            # Loss function is never wrapped with DataParallel
+            projection_to_save = self.loss_fn.projection
 
             from .checkpoints import save_checkpoint
 
