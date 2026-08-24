@@ -354,7 +354,7 @@ class DistillationTrainer:
 
 def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader, device, epoch, config):
     """
-    Train one epoch with DDP.
+    Train one epoch with DDP (memory-efficient).
 
     Args:
         teacher: DDP-wrapped teacher
@@ -379,25 +379,34 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
     for step, images in enumerate(dataloader):
         images = images.to(device, non_blocking=True)
 
-        # Forward teacher (no grad)
+        # Forward teacher and sample immediately (memory efficient)
         with torch.no_grad():
             teacher_features_all = teacher(images)
+            teacher_features = [f for f in teacher_features_all if f is not None]
+
+            # Sample teacher tokens immediately to reduce memory
+            teacher_sampled = []
+            teacher_indices = []
+            for t_feat in teacher_features:
+                t_sampled, indices = sample_tokens(t_feat)
+                teacher_sampled.append(t_sampled.detach())
+                teacher_indices.append(indices)
+
+            # Clear teacher features
+            del teacher_features_all, teacher_features
+            torch.cuda.empty_cache()
 
         # Forward student
         student_features_all = student(images)
-
-        # Filter None
-        teacher_features = [f for f in teacher_features_all if f is not None]
         student_features = [f for f in student_features_all if f is not None]
+        del student_features_all
 
-        # Sample tokens
-        teacher_sampled = []
+        # Sample student tokens with same indices
         student_sampled = []
-        for i in range(len(teacher_features)):
-            t_sampled, indices = sample_tokens(teacher_features[i])
-            teacher_sampled.append(t_sampled)
-            s_sampled = sample_tokens_with_indices(student_features[i], indices)
+        for i, s_feat in enumerate(student_features):
+            s_sampled = sample_tokens_with_indices(s_feat, teacher_indices[i])
             student_sampled.append(s_sampled)
+        del student_features
 
         # Compute loss
         loss, metrics = loss_fn(student_sampled, teacher_sampled)
@@ -412,10 +421,15 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
         epoch_loss += loss.item()
         num_steps += 1
 
+        # Clear memory
+        del teacher_sampled, student_sampled, loss
+        if (step + 1) % 100 == 0:
+            torch.cuda.empty_cache()
+
         # Log
         if is_main_process() and (step + 1) % config.log_every == 0:
             lr = scheduler.get_lr()
-            print(f"  Step {step+1}/{len(dataloader)}: Loss={loss.item():.4f}, LR={lr:.6f}")
+            print(f"  Step {step+1}/{len(dataloader)}: Loss={epoch_loss/num_steps:.4f}, LR={lr:.6f}")
 
     # Average across all processes
     epoch_loss /= num_steps
