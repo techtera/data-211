@@ -19,6 +19,21 @@ from distillation import (
 )
 
 
+class FeaturesOnlyWrapper(nn.Module):
+    """
+    Wrapper that only returns features (not patch_start_idx) for DataParallel compatibility.
+
+    DataParallel can't gather integers across GPUs, so we drop the patch_start_idx return value.
+    """
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, images):
+        features, _ = self.model(images)  # Drop patch_start_idx
+        return features
+
+
 def setup_multi_gpu(model: nn.Module, config, device: str) -> tuple:
     """
     Setup multi-GPU training if available.
@@ -46,6 +61,9 @@ def setup_multi_gpu(model: nn.Module, config, device: str) -> tuple:
         num_gpus = len(gpu_ids)
     else:
         gpu_ids = list(range(num_gpus))
+
+    # Wrap model to return only features (drop patch_start_idx for DataParallel)
+    model = FeaturesOnlyWrapper(model)
 
     # Wrap with DataParallel
     model = nn.DataParallel(model, device_ids=gpu_ids)
@@ -137,15 +155,12 @@ class DistillationTrainer:
             images = images.to(self.device)  # [B, S, C, H, W]
 
             # Forward teacher (no grad)
-            # Note: Returns (features, patch_start_idx), but patch_start_idx causes issues with DataParallel
-            # We only need features, patch_start_idx is always 5
+            # Models wrapped with FeaturesOnlyWrapper return only features (no patch_start_idx)
             with torch.no_grad():
-                teacher_output = self.teacher(images)
-                teacher_features = teacher_output[0] if isinstance(teacher_output, tuple) else teacher_output
+                teacher_features = self.teacher(images)  # List of [B, S, 1374, 2048]
 
             # Forward student (with grad)
-            student_output = self.student(images)
-            student_features_all = student_output[0] if isinstance(student_output, tuple) else student_output
+            student_features_all = self.student(images)  # List with None for uncached layers
 
             # Filter out None (only keep cached layers)
             student_features = [f for f in student_features_all if f is not None]
@@ -247,9 +262,14 @@ class DistillationTrainer:
             print(f"    Time: {epoch_metrics['time']:.1f}s")
             print(f"    LR: {self.scheduler.get_lr():.6f}")
 
-            # Unwrap DataParallel if needed (for all checkpoint types)
-            student_to_save = self.student.module if self.is_multi_gpu else self.student
-            projection_to_save = self.loss_fn.module.projection if self.is_multi_gpu else self.loss_fn.projection
+            # Unwrap DataParallel and FeaturesOnlyWrapper if needed (for all checkpoint types)
+            if self.is_multi_gpu:
+                # Unwrap: DataParallel -> FeaturesOnlyWrapper -> actual model
+                student_to_save = self.student.module.model
+                projection_to_save = self.loss_fn.module.projection
+            else:
+                student_to_save = self.student
+                projection_to_save = self.loss_fn.projection
 
             from .checkpoints import save_checkpoint
 
@@ -302,8 +322,11 @@ class DistillationTrainer:
         print("✓ Training Complete!")
         print("="*60)
 
-        # Save final model (unwrap DataParallel if needed)
+        # Save final model (unwrap DataParallel and FeaturesOnlyWrapper if needed)
         from .checkpoints import save_student_only
         final_path = os.path.join(self.config.checkpoint_dir, "student_final.pt")
-        student_to_save = self.student.module if self.is_multi_gpu else self.student
+        if self.is_multi_gpu:
+            student_to_save = self.student.module.model  # Unwrap DataParallel -> FeaturesOnlyWrapper -> model
+        else:
+            student_to_save = self.student
         save_student_only(student_to_save, final_path)
