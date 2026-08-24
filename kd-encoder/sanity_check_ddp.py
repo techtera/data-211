@@ -33,6 +33,8 @@ def main():
                        default='../../vggt-unified/checkpoints/vggt_unified_fp16.pt')
     parser.add_argument('--batch_size', type=int, default=7)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=2)
+    parser.add_argument('--log_every', type=int, default=20,
+                       help='Log every N steps (default: 20 for faster feedback)')
 
     args = parser.parse_args()
 
@@ -119,7 +121,7 @@ def main():
             save_every=0,
             save_last=True,
             save_best=True,
-            log_every=50,
+            log_every=args.log_every,
             checkpoint_dir='checkpoints_sanity_ddp',
             use_multi_gpu=False  # DDP handles this
         )
