@@ -137,11 +137,15 @@ class DistillationTrainer:
             images = images.to(self.device)  # [B, S, C, H, W]
 
             # Forward teacher (no grad)
+            # Note: Returns (features, patch_start_idx), but patch_start_idx causes issues with DataParallel
+            # We only need features, patch_start_idx is always 5
             with torch.no_grad():
-                teacher_features, _ = self.teacher(images)  # List of [B, S, 1374, 2048]
+                teacher_output = self.teacher(images)
+                teacher_features = teacher_output[0] if isinstance(teacher_output, tuple) else teacher_output
 
             # Forward student (with grad)
-            student_features_all, _ = self.student(images)  # List with None for uncached layers
+            student_output = self.student(images)
+            student_features_all = student_output[0] if isinstance(student_output, tuple) else student_output
 
             # Filter out None (only keep cached layers)
             student_features = [f for f in student_features_all if f is not None]
