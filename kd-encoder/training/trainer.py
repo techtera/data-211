@@ -38,6 +38,8 @@ def setup_multi_gpu(model: nn.Module, config, device: str) -> tuple:
     """
     Setup multi-GPU training if available.
 
+    Always wraps with FeaturesOnlyWrapper to provide consistent interface.
+
     Args:
         model: Model to wrap
         config: TrainingConfig
@@ -46,6 +48,10 @@ def setup_multi_gpu(model: nn.Module, config, device: str) -> tuple:
     Returns:
         (wrapped_model, num_gpus, gpu_ids)
     """
+    # Always wrap with FeaturesOnlyWrapper for consistent return values
+    # (returns only features, drops patch_start_idx)
+    model = FeaturesOnlyWrapper(model)
+
     if not torch.cuda.is_available() or not config.use_multi_gpu:
         return model, 1, [0]
 
@@ -62,10 +68,7 @@ def setup_multi_gpu(model: nn.Module, config, device: str) -> tuple:
     else:
         gpu_ids = list(range(num_gpus))
 
-    # Wrap model to return only features (drop patch_start_idx for DataParallel)
-    model = FeaturesOnlyWrapper(model)
-
-    # Wrap with DataParallel
+    # Wrap with DataParallel (already wrapped with FeaturesOnlyWrapper above)
     model = nn.DataParallel(model, device_ids=gpu_ids)
 
     return model, num_gpus, gpu_ids
@@ -289,7 +292,8 @@ class DistillationTrainer:
                 # Unwrap: DataParallel -> FeaturesOnlyWrapper -> actual model
                 student_to_save = self.student.module.model
             else:
-                student_to_save = self.student
+                # Single GPU: Unwrap FeaturesOnlyWrapper -> actual model
+                student_to_save = self.student.model
 
             # Loss function is never wrapped with DataParallel
             projection_to_save = self.loss_fn.projection
@@ -351,5 +355,5 @@ class DistillationTrainer:
         if self.is_multi_gpu:
             student_to_save = self.student.module.model  # Unwrap DataParallel -> FeaturesOnlyWrapper -> model
         else:
-            student_to_save = self.student
+            student_to_save = self.student.model  # Unwrap FeaturesOnlyWrapper -> model
         save_student_only(student_to_save, final_path)
