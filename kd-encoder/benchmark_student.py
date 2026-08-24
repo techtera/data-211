@@ -59,23 +59,24 @@ def load_teacher(checkpoint_path: str = None, device: str = 'cuda', verbose: boo
     Returns:
         Teacher model
     """
+    # Try to load real teacher
     if checkpoint_path and checkpoint_path != 'mock':
         if verbose:
-            print(f"\nLoading teacher from checkpoint: {checkpoint_path}")
+            print(f"\nLoading REAL teacher from checkpoint: {checkpoint_path}")
         try:
-            # Try to load real teacher checkpoint
-            # This requires the full VGGT model code
-            raise NotImplementedError("Real teacher loading not implemented yet")
+            from load_real_teacher import load_real_teacher
+            teacher = load_real_teacher(checkpoint_path, device)
+            return teacher
         except Exception as e:
             if verbose:
-                print(f"⚠ Could not load teacher checkpoint: {e}")
+                print(f"⚠ Could not load real teacher: {e}")
                 print(f"⚠ Falling back to mock teacher")
-            checkpoint_path = 'mock'
 
+    # Fallback to mock
     if verbose:
-        print(f"\nUsing mock teacher for benchmarking")
-        print(f"Note: Mock teacher has correct architecture for parameter counting")
-        print(f"      but latency/memory may differ from real teacher")
+        print(f"\n⚠ Using mock teacher (not real comparison)")
+        print(f"   Mock teacher does minimal computation - results not accurate")
+        print(f"   Use --teacher_checkpoint <path> for real comparison")
 
     teacher = MockTeacher()
     teacher = teacher.to(device).eval()
@@ -101,8 +102,8 @@ def main():
     parser.add_argument(
         '--teacher_checkpoint',
         type=str,
-        default='mock',
-        help='Path to teacher checkpoint (use "mock" for testing)'
+        default='../../vggt-unified/checkpoints/vggt_unified_fp16.pt',
+        help='Path to teacher checkpoint (default: real teacher from vggt-unified)'
     )
     parser.add_argument(
         '--batch_size',
