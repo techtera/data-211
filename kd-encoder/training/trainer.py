@@ -110,6 +110,7 @@ class DistillationTrainer:
         # Training state
         self.current_epoch = 0
         self.global_step = 0
+        self.best_loss = float('inf')  # Track best loss for best checkpoint
 
         # Multi-GPU info
         self.is_multi_gpu = self.num_gpus_student > 1
@@ -242,18 +243,18 @@ class DistillationTrainer:
             print(f"    Time: {epoch_metrics['time']:.1f}s")
             print(f"    LR: {self.scheduler.get_lr():.6f}")
 
-            # Save checkpoint
-            if (epoch + 1) % self.config.save_every == 0:
-                from .checkpoints import save_checkpoint
+            # Unwrap DataParallel if needed (for all checkpoint types)
+            student_to_save = self.student.module if self.is_multi_gpu else self.student
+            projection_to_save = self.loss_fn.module.projection if self.is_multi_gpu else self.loss_fn.projection
+
+            from .checkpoints import save_checkpoint
+
+            # 1. Save periodic checkpoint (every N epochs)
+            if self.config.save_every > 0 and (epoch + 1) % self.config.save_every == 0:
                 save_path = os.path.join(
                     self.config.checkpoint_dir,
                     f"checkpoint_epoch_{epoch+1}.pt"
                 )
-
-                # Unwrap DataParallel if needed
-                student_to_save = self.student.module if self.is_multi_gpu else self.student
-                projection_to_save = self.loss_fn.module.projection if self.is_multi_gpu else self.loss_fn.projection
-
                 save_checkpoint(
                     student=student_to_save,
                     optimizer=self.optimizer,
@@ -263,6 +264,35 @@ class DistillationTrainer:
                     save_path=save_path,
                     projection=projection_to_save
                 )
+                print(f"  ✓ Periodic checkpoint saved (epoch {epoch+1})")
+
+            # 2. Save last checkpoint (always, overwrites previous)
+            if self.config.save_last:
+                last_path = os.path.join(self.config.checkpoint_dir, "checkpoint_last.pt")
+                save_checkpoint(
+                    student=student_to_save,
+                    optimizer=self.optimizer,
+                    scheduler=self.scheduler,
+                    epoch=epoch + 1,
+                    loss=epoch_metrics['loss'],
+                    save_path=last_path,
+                    projection=projection_to_save
+                )
+
+            # 3. Save best checkpoint (when loss improves)
+            if self.config.save_best and epoch_metrics['loss'] < self.best_loss:
+                self.best_loss = epoch_metrics['loss']
+                best_path = os.path.join(self.config.checkpoint_dir, "checkpoint_best.pt")
+                save_checkpoint(
+                    student=student_to_save,
+                    optimizer=self.optimizer,
+                    scheduler=self.scheduler,
+                    epoch=epoch + 1,
+                    loss=epoch_metrics['loss'],
+                    save_path=best_path,
+                    projection=projection_to_save
+                )
+                print(f"  ✓ New best checkpoint! Loss: {self.best_loss:.6f}")
 
         print("\n" + "="*60)
         print("✓ Training Complete!")

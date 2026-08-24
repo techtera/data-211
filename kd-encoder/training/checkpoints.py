@@ -42,7 +42,6 @@ def save_checkpoint(
         checkpoint['projection_state_dict'] = projection.state_dict()
 
     torch.save(checkpoint, save_path)
-    print(f"✓ Checkpoint saved: {save_path}")
 
 
 def load_checkpoint(
@@ -104,4 +103,4 @@ def save_student_only(student: torch.nn.Module, save_path: str):
     """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     torch.save(student.state_dict(), save_path)
-    print(f"✓ Student encoder saved: {save_path}")
+    print(f"\n✓ Student encoder saved: {save_path}")

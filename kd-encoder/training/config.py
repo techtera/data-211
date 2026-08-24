@@ -37,7 +37,9 @@ class TrainingConfig:
     num_patch_samples: int = 128  # 5 special + 128 patches = 133 total
 
     # Checkpointing
-    save_every: int = 5  # Save every N epochs
+    save_every: int = 0  # Save periodic checkpoint every N epochs (0 = disabled)
+    save_last: bool = True  # Always save last checkpoint
+    save_best: bool = True  # Save best checkpoint (lowest loss)
     checkpoint_dir: str = "checkpoints"
 
     # Logging
@@ -68,7 +70,7 @@ class TrainingConfig:
             num_epochs=5,
             batch_size=2,
             warmup_epochs=1,
-            save_every=1,
+            save_every=0,  # Only last/best for quick tests
             log_every=5,
         )
 
@@ -79,6 +81,6 @@ class TrainingConfig:
             num_epochs=50,
             batch_size=4,
             warmup_epochs=5,
-            save_every=5,
+            save_every=0,  # Only last/best
             log_every=10,
         )
