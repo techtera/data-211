@@ -18,6 +18,12 @@ from distillation import (
     DistillationLoss
 )
 
+try:
+    from .ddp_utils import reduce_tensor, is_main_process
+    DDP_AVAILABLE = True
+except ImportError:
+    DDP_AVAILABLE = False
+
 
 class FeaturesOnlyWrapper(nn.Module):
     """
@@ -357,3 +363,74 @@ class DistillationTrainer:
         else:
             student_to_save = self.student.model  # Unwrap FeaturesOnlyWrapper -> model
         save_student_only(student_to_save, final_path)
+
+
+def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader, device, epoch, config):
+    """
+    Train one epoch with DDP.
+
+    Args:
+        teacher: DDP-wrapped teacher
+        student: DDP-wrapped student
+        loss_fn: Loss function (not wrapped)
+        optimizer: Optimizer
+        scheduler: LR scheduler
+        dataloader: DataLoader with DistributedSampler
+        device: Current device
+        epoch: Current epoch
+        config: TrainingConfig
+
+    Returns:
+        Average loss for epoch
+    """
+    student.train()
+    loss_fn.train()
+
+    epoch_loss = 0.0
+    num_steps = 0
+
+    for step, images in enumerate(dataloader):
+        images = images.to(device, non_blocking=True)
+
+        # Forward teacher (no grad)
+        with torch.no_grad():
+            teacher_features_all = teacher(images)
+
+        # Forward student
+        student_features_all = student(images)
+
+        # Filter None
+        teacher_features = [f for f in teacher_features_all if f is not None]
+        student_features = [f for f in student_features_all if f is not None]
+
+        # Sample tokens
+        teacher_sampled = []
+        student_sampled = []
+        for i in range(len(teacher_features)):
+            t_sampled, indices = sample_tokens(teacher_features[i])
+            teacher_sampled.append(t_sampled)
+            s_sampled = sample_tokens_with_indices(student_features[i], indices)
+            student_sampled.append(s_sampled)
+
+        # Compute loss
+        loss, metrics = loss_fn(student_sampled, teacher_sampled)
+
+        # Backward
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        scheduler.step()
+
+        # Accumulate
+        epoch_loss += loss.item()
+        num_steps += 1
+
+        # Log
+        if is_main_process() and (step + 1) % config.log_every == 0:
+            lr = scheduler.get_lr()
+            print(f"  Step {step+1}/{len(dataloader)}: Loss={loss.item():.4f}, LR={lr:.6f}")
+
+    # Average across all processes
+    epoch_loss /= num_steps
+
+    return epoch_loss
