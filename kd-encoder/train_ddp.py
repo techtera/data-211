@@ -47,13 +47,15 @@ def train_ddp(rank, world_size, args):
     device = f'cuda:{rank}'
 
     if is_main_process():
+        effective_batch = args.batch_size * world_size * args.gradient_accumulation_steps
         print("="*60)
         print(f"DDP Training: {world_size} GPUs")
         print("="*60)
         print(f"Image directory: {args.image_dir}")
         print(f"Epochs: {args.epochs}")
         print(f"Batch size per GPU: {args.batch_size}")
-        print(f"Effective batch size: {args.batch_size * world_size}")
+        print(f"Gradient accumulation: {args.gradient_accumulation_steps}")
+        print(f"Effective batch size: {effective_batch} ({args.batch_size}×{world_size}×{args.gradient_accumulation_steps})")
         print(f"Learning rate: {args.learning_rate}")
 
     try:
@@ -110,6 +112,7 @@ def train_ddp(rank, world_size, args):
         config = TrainingConfig(
             num_epochs=args.epochs,
             batch_size=args.batch_size,
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
             learning_rate=args.learning_rate,
             warmup_epochs=args.warmup_epochs,
             save_every=0,
@@ -233,8 +236,10 @@ def main():
     parser.add_argument('--teacher_checkpoint', type=str,
                        default='../../vggt-unified/checkpoints/vggt_unified_fp16.pt')
     parser.add_argument('--epochs', type=int, default=50)
-    parser.add_argument('--batch_size', type=int, default=8,
-                       help='Batch size PER GPU (effective = batch_size × num_gpus)')
+    parser.add_argument('--batch_size', type=int, default=4,
+                       help='Batch size PER GPU')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=4,
+                       help='Gradient accumulation steps (effective_batch = batch_size × num_gpus × accum_steps)')
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--warmup_epochs', type=int, default=5)
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints')

@@ -253,10 +253,14 @@ class DistillationTrainer:
         print(f"Device: {self.device}")
         if self.is_multi_gpu:
             print(f"Multi-GPU: {self.num_gpus_student} GPUs (IDs: {self.gpu_ids})")
-            print(f"Effective batch size: {self.config.batch_size * self.num_gpus_student}")
+            effective_batch = self.config.batch_size * self.num_gpus_student * self.config.gradient_accumulation_steps
+            print(f"Effective batch size: {effective_batch} (batch={self.config.batch_size} × gpus={self.num_gpus_student} × accum={self.config.gradient_accumulation_steps})")
         else:
             print(f"Single GPU mode")
+            effective_batch = self.config.batch_size * self.config.gradient_accumulation_steps
+            print(f"Effective batch size: {effective_batch} (batch={self.config.batch_size} × accum={self.config.gradient_accumulation_steps})")
         print(f"Batch size per GPU: {self.config.batch_size}")
+        print(f"Gradient accumulation steps: {self.config.gradient_accumulation_steps}")
         print(f"Epochs: {start_epoch} → {self.config.num_epochs}")
         print(f"Steps per epoch: {len(dataloader)}")
         print(f"Learning rate: {self.config.learning_rate}")
@@ -354,7 +358,7 @@ class DistillationTrainer:
 
 def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader, device, epoch, config):
     """
-    Train one epoch with DDP (memory-efficient).
+    Train one epoch with DDP (memory-efficient + gradient accumulation).
 
     Args:
         teacher: DDP-wrapped teacher
@@ -375,6 +379,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
 
     epoch_loss = 0.0
     num_steps = 0
+    accumulation_steps = config.gradient_accumulation_steps
 
     for step, images in enumerate(dataloader):
         images = images.to(device, non_blocking=True)
@@ -411,14 +416,20 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
         # Compute loss
         loss, metrics = loss_fn(student_sampled, teacher_sampled)
 
-        # Backward
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        scheduler.step()
+        # Scale loss for gradient accumulation
+        loss = loss / accumulation_steps
 
-        # Accumulate
-        epoch_loss += loss.item()
+        # Backward (accumulate gradients)
+        loss.backward()
+
+        # Only update weights every accumulation_steps
+        if (step + 1) % accumulation_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+            scheduler.step()
+
+        # Accumulate (unscaled loss for logging)
+        epoch_loss += loss.item() * accumulation_steps
         num_steps += 1
 
         # Clear memory

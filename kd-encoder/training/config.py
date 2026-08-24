@@ -17,6 +17,7 @@ class TrainingConfig:
 
     # Batch settings
     batch_size: int = 4  # Per GPU
+    gradient_accumulation_steps: int = 1  # Accumulate gradients over N steps
     num_workers: int = 4  # DataLoader workers
 
     # Optimizer
