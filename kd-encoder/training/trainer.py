@@ -440,7 +440,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
         # Log
         if is_main_process() and (step + 1) % config.log_every == 0:
             lr = scheduler.get_lr()
-            print(f"  Step {step+1}/{len(dataloader)}: Loss={epoch_loss/num_steps:.4f}, LR={lr:.6f}")
+            print(f"  Step {step+1}/{len(dataloader)}: Loss={epoch_loss/num_steps:.4f}, LR={lr:.6f}", flush=True)
 
     # Average across all processes
     epoch_loss /= num_steps

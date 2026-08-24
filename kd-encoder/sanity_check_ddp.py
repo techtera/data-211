@@ -48,19 +48,19 @@ def main():
 
     if is_main_process():
         effective_batch = args.batch_size * world_size * args.gradient_accumulation_steps
-        print("="*60)
-        print("DDP Sanity Check: 3 Epochs")
-        print("="*60)
-        print(f"GPUs: {world_size}")
-        print(f"Batch size per GPU: {args.batch_size}")
-        print(f"Gradient accumulation: {args.gradient_accumulation_steps}")
-        print(f"Effective batch: {effective_batch}")
-        print("="*60)
+        print("="*60, flush=True)
+        print("DDP Sanity Check: 3 Epochs", flush=True)
+        print("="*60, flush=True)
+        print(f"GPUs: {world_size}", flush=True)
+        print(f"Batch size per GPU: {args.batch_size}", flush=True)
+        print(f"Gradient accumulation: {args.gradient_accumulation_steps}", flush=True)
+        print(f"Effective batch: {effective_batch}", flush=True)
+        print("="*60, flush=True)
 
     try:
         # Load teacher
         if is_main_process():
-            print("\n[1] Loading teacher...")
+            print("\n[1] Loading teacher...", flush=True)
         teacher = load_real_teacher(args.teacher_checkpoint, device)
 
         # Wrap teacher with FeaturesOnlyWrapper (NO DDP - teacher has no trainable params)
@@ -70,7 +70,7 @@ def main():
 
         # Initialize student
         if is_main_process():
-            print("\n[2] Initializing student...")
+            print("\n[2] Initializing student...", flush=True)
         student = StudentAggregator().to(device)
         initialize_student_from_dinov2(student, verbose=is_main_process())
 
@@ -80,7 +80,7 @@ def main():
 
         # Create dataloader
         if is_main_process():
-            print("\n[3] Creating dataloader...")
+            print("\n[3] Creating dataloader...", flush=True)
 
         dataset = ImageDataset(
             image_dir=args.image_dir,
@@ -105,12 +105,12 @@ def main():
         )
 
         if is_main_process():
-            print(f"  Dataset: {len(dataset)} images")
-            print(f"  Batches per epoch: {len(dataloader)}")
+            print(f"  Dataset: {len(dataset)} images", flush=True)
+            print(f"  Batches per epoch: {len(dataloader)}", flush=True)
 
         # Setup training
         if is_main_process():
-            print("\n[4] Setting up training...")
+            print("\n[4] Setting up training...", flush=True)
 
         config = TrainingConfig(
             num_epochs=3,  # Only 3 epochs for sanity check
@@ -144,8 +144,8 @@ def main():
 
         # Training loop
         if is_main_process():
-            print("\n[5] Running sanity check (3 epochs)...")
-            print("="*60)
+            print("\n[5] Running sanity check (3 epochs)...", flush=True)
+            print("="*60, flush=True)
 
         from training.trainer import train_epoch_ddp
 
@@ -155,8 +155,8 @@ def main():
             sampler.set_epoch(epoch)
 
             if is_main_process():
-                print(f"\nEpoch {epoch+1}/3")
-                print("-"*60)
+                print(f"\nEpoch {epoch+1}/3", flush=True)
+                print("-"*60, flush=True)
 
             # Train epoch
             epoch_loss = train_epoch_ddp(
@@ -173,7 +173,7 @@ def main():
 
             # Save checkpoints (main process only)
             if is_main_process():
-                print(f"\n  Epoch {epoch+1} Loss: {epoch_loss:.6f}")
+                print(f"\n  Epoch {epoch+1} Loss: {epoch_loss:.6f}", flush=True)
 
                 from training.checkpoints import save_checkpoint
 
@@ -200,23 +200,23 @@ def main():
                         save_path=os.path.join(config.checkpoint_dir, "checkpoint_best.pt"),
                         projection=loss_fn.projection
                     )
-                    print(f"  ✓ New best! Loss: {best_loss:.6f}")
+                    print(f"  ✓ New best! Loss: {best_loss:.6f}", flush=True)
 
         if is_main_process():
-            print("\n" + "="*60)
-            print("✓ SANITY CHECK COMPLETE")
-            print("="*60)
-            print(f"\nFinal loss: {epoch_loss:.6f}")
-            print(f"Best loss: {best_loss:.6f}")
-            print(f"\nCheckpoints saved to: {config.checkpoint_dir}/")
-            print("\nIf loss decreased and no errors occurred:")
-            print("  ✅ Ready for full training!")
-            print("\nRun full training with:")
-            print("  torchrun --nproc_per_node=2 train_ddp.py \\")
-            print("    --image_dir train_images \\")
-            print("    --epochs 50 \\")
-            print(f"    --batch_size {args.batch_size} \\")
-            print(f"    --gradient_accumulation_steps {args.gradient_accumulation_steps}")
+            print("\n" + "="*60, flush=True)
+            print("✓ SANITY CHECK COMPLETE", flush=True)
+            print("="*60, flush=True)
+            print(f"\nFinal loss: {epoch_loss:.6f}", flush=True)
+            print(f"Best loss: {best_loss:.6f}", flush=True)
+            print(f"\nCheckpoints saved to: {config.checkpoint_dir}/", flush=True)
+            print("\nIf loss decreased and no errors occurred:", flush=True)
+            print("  ✅ Ready for full training!", flush=True)
+            print("\nRun full training with:", flush=True)
+            print("  torchrun --nproc_per_node=2 train_ddp.py \\", flush=True)
+            print("    --image_dir train_images \\", flush=True)
+            print("    --epochs 50 \\", flush=True)
+            print(f"    --batch_size {args.batch_size} \\", flush=True)
+            print(f"    --gradient_accumulation_steps {args.gradient_accumulation_steps}", flush=True)
 
     finally:
         cleanup_ddp()
