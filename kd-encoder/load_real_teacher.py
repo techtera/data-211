@@ -48,8 +48,18 @@ def load_real_teacher(checkpoint_path='../../vggt-unified/checkpoints/vggt_unifi
     # Configure cached layers to match student's proportional mapping
     # Teacher has 24 layers (0-23), student has 18 layers (0-17)
     # Student caches: [3, 8, 13, 17] → Teacher should cache: [4, 11, 17, 23]
+
+    # IMPORTANT: Set cached_layer_indices BEFORE moving to device or eval mode
+    # The aggregator's forward pass checks layer_idx against this set
     teacher.cached_layer_indices = {4, 11, 17, 23}
+
+    # Also verify the attribute exists and was set correctly
+    if not hasattr(teacher, 'cached_layer_indices'):
+        raise AttributeError("Teacher aggregator doesn't have cached_layer_indices attribute!")
+
+    print(f"  Teacher depth: {teacher.depth if hasattr(teacher, 'depth') else 'unknown'}")
     print(f"  Teacher configured to cache layers: {sorted(teacher.cached_layer_indices)}")
+    print(f"  Number of cached layers: {len(teacher.cached_layer_indices)}")
 
     # Freeze teacher
     for param in teacher.parameters():
@@ -57,7 +67,6 @@ def load_real_teacher(checkpoint_path='../../vggt-unified/checkpoints/vggt_unifi
 
     print(f"✓ Real teacher loaded successfully")
     print(f"  Parameters: {sum(p.numel() for p in teacher.parameters()):,}")
-    print(f"  Cached layers: 4 (matching student)")
 
     return teacher
 

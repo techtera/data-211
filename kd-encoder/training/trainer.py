@@ -157,17 +157,38 @@ class DistillationTrainer:
             # Forward teacher (no grad)
             # Models wrapped with FeaturesOnlyWrapper return only features (no patch_start_idx)
             with torch.no_grad():
-                teacher_features = self.teacher(images)  # List of [B, S, 1374, 2048]
+                teacher_features_all = self.teacher(images)  # List with None for uncached layers
 
             # Forward student (with grad)
             student_features_all = self.student(images)  # List with None for uncached layers
 
-            # Filter out None (only keep cached layers)
+            # Filter out None (only keep cached layers) - both teacher and student
+            teacher_features = [f for f in teacher_features_all if f is not None]
             student_features = [f for f in student_features_all if f is not None]
 
             # Verify we have matching number of features
-            assert len(student_features) == len(teacher_features), \
-                f"Mismatch: student has {len(student_features)} cached, teacher has {len(teacher_features)}"
+            if len(student_features) != len(teacher_features):
+                # Debug info for mismatch
+                print(f"\n✗ Feature count mismatch:")
+                print(f"  Teacher features_all length: {len(teacher_features_all)}")
+                print(f"  Teacher non-None count: {len(teacher_features)}")
+                print(f"  Student features_all length: {len(student_features_all)}")
+                print(f"  Student non-None count: {len(student_features)}")
+                if hasattr(self.teacher, 'module'):
+                    if hasattr(self.teacher.module, 'model'):
+                        # Unwrap DataParallel and FeaturesOnlyWrapper
+                        actual_teacher = self.teacher.module.model
+                    else:
+                        actual_teacher = self.teacher.module
+                else:
+                    actual_teacher = self.teacher
+                if hasattr(actual_teacher, 'cached_layer_indices'):
+                    print(f"  Teacher cached_layer_indices: {sorted(actual_teacher.cached_layer_indices)}")
+
+                raise AssertionError(
+                    f"Mismatch: student has {len(student_features)} cached, "
+                    f"teacher has {len(teacher_features)} cached"
+                )
 
             # Sample tokens with shared indices
             teacher_sampled = []
