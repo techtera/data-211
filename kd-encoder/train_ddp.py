@@ -242,9 +242,9 @@ def main():
     parser.add_argument('--teacher_checkpoint', type=str,
                        default='../../vggt-unified/checkpoints/vggt_unified_fp16.pt')
     parser.add_argument('--epochs', type=int, default=50)
-    parser.add_argument('--batch_size', type=int, default=4,
-                       help='Batch size PER GPU')
-    parser.add_argument('--gradient_accumulation_steps', type=int, default=4,
+    parser.add_argument('--batch_size', type=int, default=32,
+                       help='Batch size PER GPU (with num_frames=1, can use much larger batches)')
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=2,
                        help='Gradient accumulation steps (effective_batch = batch_size × num_gpus × accum_steps)')
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--warmup_epochs', type=int, default=5)
