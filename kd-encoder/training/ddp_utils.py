@@ -21,15 +21,17 @@ def setup_ddp(rank, world_size):
         rank: Current process rank (GPU ID)
         world_size: Total number of processes (number of GPUs)
     """
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    # torchrun sets these automatically, but set defaults as fallback
+    if 'MASTER_ADDR' not in os.environ:
+        os.environ['MASTER_ADDR'] = 'localhost'
+    if 'MASTER_PORT' not in os.environ:
+        os.environ['MASTER_PORT'] = '29500'  # PyTorch default port
 
     # Initialize process group
+    # torchrun already sets RANK, WORLD_SIZE, LOCAL_RANK, so use env:// method
     dist.init_process_group(
         backend='nccl',  # NVIDIA GPUs
-        init_method='env://',
-        world_size=world_size,
-        rank=rank
+        init_method='env://'
     )
 
     # Set device
