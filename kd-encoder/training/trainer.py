@@ -381,6 +381,9 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
     num_steps = 0
     accumulation_steps = config.gradient_accumulation_steps
 
+    import time
+    step_start = time.time()
+
     for step, images in enumerate(dataloader):
         # Progress indicator for first few steps
         if is_main_process() and step < 5:
@@ -440,10 +443,14 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
         if (step + 1) % 100 == 0:
             torch.cuda.empty_cache()
 
-        # Log
+        # Log with timing
         if is_main_process() and (step + 1) % config.log_every == 0:
+            import time
+            step_time = time.time() - step_start
             lr = scheduler.get_lr()
-            print(f"  Step {step+1}/{len(dataloader)}: Loss={epoch_loss/num_steps:.4f}, LR={lr:.6f}", flush=True)
+            steps_per_sec = config.log_every / step_time
+            print(f"  Step {step+1}/{len(dataloader)}: Loss={epoch_loss/num_steps:.4f}, LR={lr:.6f}, Speed={steps_per_sec:.2f} steps/sec ({step_time/config.log_every:.1f}s/step)", flush=True)
+            step_start = time.time()
 
     # Average across all processes
     epoch_loss /= num_steps

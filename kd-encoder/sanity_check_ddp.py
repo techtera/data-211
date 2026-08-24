@@ -99,9 +99,10 @@ def main():
             dataset,
             batch_size=args.batch_size,
             sampler=sampler,
-            num_workers=4,
+            num_workers=8,  # Increased from 4 for better I/O prefetching
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            persistent_workers=True  # Keep workers alive between epochs
         )
 
         if is_main_process():
