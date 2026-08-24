@@ -164,54 +164,36 @@ class DistillationTrainer:
         for step, images in enumerate(dataloader):
             images = images.to(self.device)  # [B, S, C, H, W]
 
-            # Forward teacher (no grad)
-            # Models wrapped with FeaturesOnlyWrapper return only features (no patch_start_idx)
+            # Forward teacher (no grad) - sample tokens immediately to reduce memory
             with torch.no_grad():
                 teacher_features_all = self.teacher(images)  # List with None for uncached layers
+                teacher_features = [f for f in teacher_features_all if f is not None]
+
+                # Sample teacher tokens immediately (reduces memory 10x: 1374→133 tokens)
+                teacher_sampled = []
+                teacher_indices = []
+                for t_feat in teacher_features:
+                    t_sampled, indices = sample_tokens(t_feat)
+                    teacher_sampled.append(t_sampled.detach())  # Detach to free computation graph
+                    teacher_indices.append(indices)
+
+                # Clear teacher features immediately to free memory
+                del teacher_features_all, teacher_features
+                torch.cuda.empty_cache()
 
             # Forward student (with grad)
             student_features_all = self.student(images)  # List with None for uncached layers
-
-            # Filter out None (only keep cached layers) - both teacher and student
-            teacher_features = [f for f in teacher_features_all if f is not None]
             student_features = [f for f in student_features_all if f is not None]
+            del student_features_all  # Free memory
 
-            # Verify we have matching number of features
-            if len(student_features) != len(teacher_features):
-                # Debug info for mismatch
-                print(f"\n✗ Feature count mismatch:")
-                print(f"  Teacher features_all length: {len(teacher_features_all)}")
-                print(f"  Teacher non-None count: {len(teacher_features)}")
-                print(f"  Student features_all length: {len(student_features_all)}")
-                print(f"  Student non-None count: {len(student_features)}")
-                if hasattr(self.teacher, 'module'):
-                    if hasattr(self.teacher.module, 'model'):
-                        # Unwrap DataParallel and FeaturesOnlyWrapper
-                        actual_teacher = self.teacher.module.model
-                    else:
-                        actual_teacher = self.teacher.module
-                else:
-                    actual_teacher = self.teacher
-                if hasattr(actual_teacher, 'cached_layer_indices'):
-                    print(f"  Teacher cached_layer_indices: {sorted(actual_teacher.cached_layer_indices)}")
-
-                raise AssertionError(
-                    f"Mismatch: student has {len(student_features)} cached, "
-                    f"teacher has {len(teacher_features)} cached"
-                )
-
-            # Sample tokens with shared indices
-            teacher_sampled = []
+            # Sample student tokens with same indices as teacher
             student_sampled = []
-
-            for i in range(len(teacher_features)):
-                # Teacher: get features + indices
-                t_sampled, indices = sample_tokens(teacher_features[i])
-                teacher_sampled.append(t_sampled)
-
-                # Student: use same indices
-                s_sampled = sample_tokens_with_indices(student_features[i], indices)
+            for i, s_feat in enumerate(student_features):
+                s_sampled = sample_tokens_with_indices(s_feat, teacher_indices[i])
                 student_sampled.append(s_sampled)
+
+            # Clear student features to free memory before loss computation
+            del student_features
 
             # Compute loss
             loss, metrics = self.loss_fn(student_sampled, teacher_sampled)
@@ -226,6 +208,11 @@ class DistillationTrainer:
             epoch_loss += loss.item()
             epoch_metrics['mse'] += sum(metrics[f'layer_{i}_mse'] for i in range(4)) / 4
             epoch_metrics['cosine_sim'] += sum(metrics[f'layer_{i}_cosine_sim'] for i in range(4)) / 4
+
+            # Clear sampled features and free memory
+            del teacher_sampled, student_sampled, loss
+            if (step + 1) % 100 == 0:  # Periodic cache clearing
+                torch.cuda.empty_cache()
 
             # Log
             self.global_step += 1
