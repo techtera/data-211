@@ -382,6 +382,9 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
     accumulation_steps = config.gradient_accumulation_steps
 
     for step, images in enumerate(dataloader):
+        # Progress indicator for first few steps
+        if is_main_process() and step < 5:
+            print(f"  Processing step {step+1}...", flush=True)
         images = images.to(device, non_blocking=True)
 
         # Forward teacher and sample immediately (memory efficient)

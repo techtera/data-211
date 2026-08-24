@@ -33,8 +33,8 @@ def main():
                        default='../../vggt-unified/checkpoints/vggt_unified_fp16.pt')
     parser.add_argument('--batch_size', type=int, default=7)
     parser.add_argument('--gradient_accumulation_steps', type=int, default=2)
-    parser.add_argument('--log_every', type=int, default=20,
-                       help='Log every N steps (default: 20 for faster feedback)')
+    parser.add_argument('--log_every', type=int, default=10,
+                       help='Log every N steps (default: 10 for faster feedback)')
 
     args = parser.parse_args()
 
