@@ -99,10 +99,11 @@ def main():
             dataset,
             batch_size=args.batch_size,
             sampler=sampler,
-            num_workers=8,  # Increased from 4 for better I/O prefetching
+            num_workers=12,  # Increased for better I/O prefetching
             pin_memory=True,
             drop_last=True,
-            persistent_workers=True  # Keep workers alive between epochs
+            persistent_workers=True,  # Keep workers alive between epochs
+            prefetch_factor=4  # Preload 4 batches per worker (default: 2)
         )
 
         if is_main_process():

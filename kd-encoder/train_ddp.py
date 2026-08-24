@@ -101,7 +101,9 @@ def train_ddp(rank, world_size, args):
             sampler=sampler,
             num_workers=args.num_workers,
             pin_memory=True,
-            drop_last=True
+            drop_last=True,
+            persistent_workers=True,
+            prefetch_factor=4  # Preload 4 batches per worker
         )
 
         if is_main_process():
@@ -248,7 +250,7 @@ def main():
     parser.add_argument('--warmup_epochs', type=int, default=5)
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints')
     parser.add_argument('--resume_from', type=str, default=None)
-    parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--num_workers', type=int, default=12)
     parser.add_argument('--log_every', type=int, default=100)
 
     args = parser.parse_args()
