@@ -4,25 +4,29 @@ Compress 909M parameter VGGT encoder to 255M parameter student via layer-wise fe
 
 ## Quick Start
 
-**Train student in ~7 hours on 2×A100 80GB:**
+**Train student in ~30 hours on 2×A100 80GB:**
 
 ```bash
-# Sanity check (3 epochs, ~35 min)
+# Sanity check (3 epochs, ~1 hour)
 torchrun --nproc_per_node=2 sanity_check_ddp.py \
     --image_dir train_images \
-    --batch_size 32 \
-    --gradient_accumulation_steps 2
+    --batch_size 64 \
+    --gradient_accumulation_steps 1
 
-# Full training (35 epochs, ~6.5 hours)
+# Full training (80 epochs, ~30 hours)
 torchrun --nproc_per_node=2 train_ddp.py \
     --image_dir train_images \
-    --epochs 35 \
-    --batch_size 32 \
-    --gradient_accumulation_steps 2 \
-    --checkpoint_dir checkpoints
+    --epochs 80 \
+    --batch_size 64 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 1e-4 \
+    --warmup_epochs 3 \
+    --num_workers 12 \
+    --checkpoint_dir checkpoints_full \
+    --log_every 5
 ```
 
-**Output:** `checkpoints/student_final.pt` (255M param encoder, inference-ready)
+**Output:** `checkpoints_full/student_final.pt` (255M param encoder, inference-ready)
 
 ## Architecture
 
@@ -38,9 +42,11 @@ torchrun --nproc_per_node=2 train_ddp.py \
 
 - ✅ **Single frame processing** - For unrelated images (not videos)
 - ✅ **DDP multi-GPU** - Efficient 2×A100 utilization
-- ✅ **Large batches** - Batch size 32-40 (60-75GB per GPU)
+- ✅ **Large batches** - Batch size 64 (60-70GB per GPU)
+- ✅ **No gradient accumulation** - Faster training, better optimizer dynamics
 - ✅ **Gradient checkpointing** - Memory-efficient training
 - ✅ **Pretrained initialization** - DINOv2 for faster convergence
+- ✅ **Extended training** - 80 epochs for optimal convergence
 
 ## Documentation
 
@@ -50,19 +56,23 @@ torchrun --nproc_per_node=2 train_ddp.py \
 
 ## Performance
 
-| Configuration | Time/Epoch | 35 Epochs | GPU Usage |
-|--------------|-----------|-----------|-----------|
-| Recommended (batch=32) | 11 min | **6.5 hours** | 60GB/GPU ✅ |
-| Aggressive (batch=40) | 9 min | 5.2 hours | 75GB/GPU |
+| Configuration | Batches/Epoch | Time/Epoch | 80 Epochs | GPU Usage |
+|--------------|---------------|-----------|-----------|-----------|
+| **Current (batch=64)** | 185 | **~23 min** | **~30 hours** | 60-70GB/GPU ✅ |
+| Aggressive (batch=72) | 165 | ~20 min | ~26 hours | 70-75GB/GPU |
+| Maximum (batch=80) | 148 | ~18 min | ~24 hours | 75-78GB/GPU |
 
-**100× speedup** from initial naive configuration (num_frames=8, small batches)
+**Cold start:** First 5-10 steps are slower (~30s/step) while data pipeline warms up  
+**Steady state:** Speed stabilizes at ~7-8s/step after step 20-30
+
+**100× speedup** from initial naive configuration (num_frames=8, small batches, single GPU)
 
 ## Training Data
 
 - **Format:** Independent images (JPG/PNG)
 - **Size:** 518×518 (VGGT standard)
 - **Count:** 23,687 images
-- **Preprocessing:** ImageNet normalization
+- **Preprocessing:** Resize + ToTensor (models normalize internally)
 
 **Note:** Images must be unrelated (not video sequences). Use `num_frames=1`.
 
@@ -130,6 +140,34 @@ See parent project for license details.
 
 ---
 
-**Status:** Phase 1 in progress - See [STATUS.md](STATUS.md) for live updates
+## Current Status
+
+**Training:** 80 epochs in progress (~30 hours)  
+**Configuration:** batch_size=64, no gradient accumulation, log_every=5  
+**Expected completion:** Check [STATUS.md](STATUS.md) for live updates
 
 **Questions?** Check [TRAINING_GUIDE.md](TRAINING_GUIDE.md) for troubleshooting
+
+---
+
+## Training Configuration Summary
+
+```bash
+# Recommended configuration (tested on 2×A100 80GB)
+torchrun --nproc_per_node=2 train_ddp.py \
+    --image_dir train_images \
+    --epochs 80 \
+    --batch_size 64 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 1e-4 \
+    --warmup_epochs 3 \
+    --num_workers 12 \
+    --checkpoint_dir checkpoints_full \
+    --log_every 5
+```
+
+**Key parameters:**
+- **185 steps/epoch** (23,687 images ÷ 128 effective batch)
+- **~7-8s/step** (after warmup)
+- **~23 min/epoch** → **30 hours total**
+- **GPU usage:** 60-70GB per A100
