@@ -408,7 +408,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
             torch.cuda.empty_cache()
 
         # Forward student
-        student_features_all, _ = student(images)  # DDP passes through tuple from model
+        student_features_all = student(images)  # DDP(FeaturesOnlyWrapper) returns list directly
         student_features = [f for f in student_features_all if f is not None]
         del student_features_all
 

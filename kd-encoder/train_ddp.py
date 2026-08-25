@@ -75,6 +75,10 @@ def train_ddp(rank, world_size, args):
         student = StudentAggregator().to(device)
         if not args.resume_from:
             initialize_student_from_dinov2(student, verbose=is_main_process())
+
+        # Wrap student with FeaturesOnlyWrapper then DDP (consistent with sanity_check_ddp.py)
+        from training.trainer import FeaturesOnlyWrapper
+        student = FeaturesOnlyWrapper(student)
         student = DDP(student, device_ids=[rank], find_unused_parameters=False)
 
         # Create dataloader with DistributedSampler
@@ -152,7 +156,7 @@ def train_ddp(rank, world_size, args):
             print(f"\n[5] Loading checkpoint...")
             checkpoint_data = load_checkpoint(
                 checkpoint_path=args.resume_from,
-                student=student.module,  # Unwrap DDP
+                student=student.module.model,  # Unwrap DDP -> FeaturesOnlyWrapper -> model
                 optimizer=optimizer,
                 scheduler=scheduler,
                 projection=loss_fn.projection,
@@ -198,7 +202,7 @@ def train_ddp(rank, world_size, args):
                 # Save last
                 if config.save_last:
                     save_checkpoint(
-                        student=student.module,
+                        student=student.module.model,  # Unwrap DDP -> FeaturesOnlyWrapper -> model
                         optimizer=optimizer,
                         scheduler=scheduler,
                         epoch=epoch + 1,
@@ -212,7 +216,7 @@ def train_ddp(rank, world_size, args):
                 if config.save_best and epoch_loss < best_loss:
                     best_loss = epoch_loss
                     save_checkpoint(
-                        student=student.module,
+                        student=student.module.model,  # Unwrap DDP -> FeaturesOnlyWrapper -> model
                         optimizer=optimizer,
                         scheduler=scheduler,
                         epoch=epoch + 1,
@@ -228,7 +232,7 @@ def train_ddp(rank, world_size, args):
             print("✓ Training Complete!")
             print("="*60)
             save_student_only(
-                student.module,
+                student.module.model,  # Unwrap DDP -> FeaturesOnlyWrapper -> model
                 os.path.join(config.checkpoint_dir, "student_final.pt")
             )
 
