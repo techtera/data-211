@@ -166,7 +166,7 @@ class DistillationTrainer:
 
             # Forward teacher (no grad) - sample tokens immediately to reduce memory
             with torch.no_grad():
-                teacher_features_all, _ = self.teacher(images)  # List with None for uncached layers
+                teacher_features_all = self.teacher(images)  # List with None for uncached layers (FeaturesOnlyWrapper)
                 teacher_features = [f for f in teacher_features_all if f is not None]
 
                 # Sample teacher tokens immediately (reduces memory 10x: 1374→133 tokens)
@@ -182,7 +182,7 @@ class DistillationTrainer:
                 torch.cuda.empty_cache()
 
             # Forward student (with grad)
-            student_features_all, _ = self.student(images)  # List with None for uncached layers
+            student_features_all = self.student(images)  # List with None for uncached layers (FeaturesOnlyWrapper)
             student_features = [f for f in student_features_all if f is not None]
             del student_features_all  # Free memory
 
@@ -392,7 +392,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
 
         # Forward teacher and sample immediately (memory efficient)
         with torch.no_grad():
-            teacher_features_all, _ = teacher(images)
+            teacher_features_all = teacher(images)  # FeaturesOnlyWrapper returns list directly
             teacher_features = [f for f in teacher_features_all if f is not None]
 
             # Sample teacher tokens immediately to reduce memory
@@ -408,7 +408,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
             torch.cuda.empty_cache()
 
         # Forward student
-        student_features_all, _ = student(images)
+        student_features_all, _ = student(images)  # DDP passes through tuple from model
         student_features = [f for f in student_features_all if f is not None]
         del student_features_all
 
