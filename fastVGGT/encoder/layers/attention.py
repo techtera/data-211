@@ -185,12 +185,12 @@ class Attention(nn.Module):
 
 
 class MemEffAttention(Attention):
-    def forward(self, x: Tensor, attn_bias=None, pos=None) -> Tensor:
-        assert pos is None
+    def forward(self, x: Tensor, attn_bias=None, pos=None, merge_info=None) -> Tensor:
+        assert pos is None or not XFORMERS_AVAILABLE, "Position encoding with xFormers requires RoPE in parent"
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
                 raise AssertionError("xFormers is required for using nested tensors")
-            return super().forward(x)
+            return super().forward(x, pos=pos, merge_info=merge_info)
 
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
