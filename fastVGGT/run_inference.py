@@ -179,9 +179,9 @@ def run_inference(
 
     # Enable FastVGGT if requested
     if use_fastvggt:
-        # Keep RoPE enabled for spatial information (critical for quality)
-        model.aggregator.enable_token_merging(merge_ratio=merge_ratio, disable_rope=False)
-        print(f"✓ FastVGGT enabled (merge_ratio={merge_ratio}, RoPE enabled for quality)")
+        # RoPE-First: RoPE applied before merging for full position preservation
+        model.aggregator.enable_token_merging(merge_ratio=merge_ratio)
+        print(f"✓ FastVGGT enabled (merge_ratio={merge_ratio}, RoPE-First architecture)")
 
     print()
 
