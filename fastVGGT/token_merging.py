@@ -183,6 +183,41 @@ class TokenMerger:
 
         return merged_tokens, src_to_dst_idx
 
+    def prepare_merge_info(
+        self,
+        x: torch.Tensor,
+        frame_idx: torch.Tensor,
+        num_frames: int,
+        tokens_per_frame: int,
+    ) -> Tuple[torch.Tensor, dict]:
+        """
+        Prepare merge information WITHOUT actually merging tokens.
+        For RoPE-First architecture where merging happens in attention layer.
+
+        Args:
+            x: Input tokens [B, N, C]
+            frame_idx: Frame index for each token [B, N]
+            num_frames: Total number of frames
+            tokens_per_frame: Tokens per frame
+
+        Returns:
+            x: Original tokens (unchanged)
+            merge_info: Information needed for merging in attention layer
+        """
+        # Partition tokens to get masks and indices
+        dst_tokens, src_tokens, salient_tokens, merge_info = self.partition_tokens(
+            x, frame_idx, num_frames, tokens_per_frame
+        )
+
+        # Compute src_to_dst mapping
+        _, src_to_dst_idx = self.merge_tokens(dst_tokens, src_tokens)
+        merge_info['src_to_dst_mapping'] = src_to_dst_idx
+        merge_info['num_dst'] = dst_tokens.shape[1]
+        merge_info['num_salient'] = salient_tokens.shape[1]
+
+        # Return original tokens unchanged - merging will happen in attention
+        return x, merge_info
+
     def apply_merging(
         self,
         x: torch.Tensor,
@@ -192,6 +227,7 @@ class TokenMerger:
     ) -> Tuple[torch.Tensor, dict]:
         """
         Apply full token merging pipeline: partition -> merge -> combine.
+        For Merge-First architecture (legacy).
 
         Args:
             x: Input tokens [B, N, C]

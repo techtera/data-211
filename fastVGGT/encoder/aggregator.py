@@ -152,11 +152,10 @@ class Aggregator(nn.Module):
 
         self.use_reentrant = False # hardcoded to False
 
-        # FastVGGT: Token merging configuration
+        # FastVGGT: Token merging configuration (RoPE-First)
         self.use_token_merging = False
         self.token_merger = None
         self.merging_config = None
-        self.disable_rope_for_merging = False
 
     def __build_patch_embed__(
         self,
@@ -305,8 +304,16 @@ class Aggregator(nn.Module):
 
     def _process_global_attention(self, tokens, B, S, P, C, global_idx, pos=None):
         """
-        Process global attention blocks with optional FastVGGT token merging.
+        Process global attention blocks with optional FastVGGT token merging (RoPE-First).
         We keep tokens in shape (B, S*P, C).
+
+        RoPE-First Architecture:
+        1. Pass full tokens + positions to attention
+        2. Attention applies RoPE to ALL tokens (preserves position info)
+        3. Attention merges q,k,v separately AFTER RoPE encoding
+        4. Attention unmerges output automatically
+
+        This preserves both src and dst position information in merged tokens.
         """
         if tokens.shape != (B, S * P, C):
             tokens = tokens.view(B, S, P, C).view(B, S * P, C)
@@ -315,10 +322,9 @@ class Aggregator(nn.Module):
             pos = pos.view(B, S, P, 2).view(B, S * P, 2)
 
         intermediates = []
-        merge_info = None
-        original_pos = pos  # Save original positions
 
-        # FastVGGT: Apply token merging if enabled and block index is eligible
+        # FastVGGT: Prepare merge_info if enabled (but don't merge tokens here)
+        merge_info = None
         apply_merging = (
             self.use_token_merging
             and not self.training  # Only in eval mode
@@ -329,71 +335,26 @@ class Aggregator(nn.Module):
             # Create frame index tensor for token partitioning
             frame_idx = create_frame_index_tensor(B, S, P, tokens.device)
 
-            # Apply token merging before attention
-            tokens, merge_info = self.token_merger.apply_merging(
-                tokens, frame_idx, S, P
-            )
+            # Prepare merge_info WITHOUT merging tokens
+            # Attention layer will handle merging after RoPE
+            _, merge_info = self.token_merger.prepare_merge_info(tokens, frame_idx, S, P)
 
-            # Handle positions
-            if pos is not None:
-                if self.disable_rope_for_merging:
-                    # Create zero positions for merged tokens (disables RoPE effectively)
-                    # Zero positions = no positional information, but avoids None crash
-                    num_merged = tokens.shape[1]  # tokens already merged at this point
-                    pos = torch.zeros(B, num_merged, 2, dtype=pos.dtype, device=pos.device)
-                else:
-                    # Select positions for kept tokens in the same order as merged tokens
-                    # Merged tokens order: [merged_dst, salient_tokens]
-                    dst_mask = merge_info['dst_mask']
-                    salient_mask = merge_info['salient_mask']
-
-                    # Extract positions separately to match token ordering
-                    dst_positions = []
-                    salient_positions = []
-                    for b in range(B):
-                        dst_pos = pos[b][dst_mask[b]]  # Positions for dst tokens
-                        salient_pos = pos[b][salient_mask[b]]  # Positions for salient tokens
-                        # Concatenate in same order as tokens: [dst, salient]
-                        kept_pos = torch.cat([dst_pos, salient_pos], dim=0)
-                        dst_positions.append(kept_pos)
-
-                    pos = torch.stack(dst_positions, dim=0)
+            # Note: We do NOT modify pos here - attention layer gets ALL positions
+            # RoPE will be applied to all tokens before merging
 
         # Process attention blocks
         for _ in range(self.aa_block_size):
             if self.training:
+                # Training: no merge_info passed
                 tokens = checkpoint(self.global_blocks[global_idx], tokens, pos, use_reentrant=self.use_reentrant)
             else:
-                tokens = self.global_blocks[global_idx](tokens, pos=pos)
+                # Inference: pass merge_info to attention (RoPE-First merging)
+                tokens = self.global_blocks[global_idx](tokens, pos=pos, merge_info=merge_info if apply_merging else None)
 
             global_idx += 1
 
-            # FastVGGT: For intermediates, always unmerge to get full resolution
-            if apply_merging and merge_info is not None:
-                # Unmerge for storing intermediate (decoder needs full resolution)
-                unmerged_for_output = self.token_merger.unmerge_tokens(tokens, merge_info)
-                # unmerged_for_output has shape [B, N, C] where N should equal S*P
-                expected_N = S * P
-                actual_N = unmerged_for_output.shape[1]
-
-                if actual_N != expected_N:
-                    # Shape mismatch - this is the bug!
-                    logger.error(f"Unmerge shape mismatch: expected {expected_N} tokens but got {actual_N}")
-                    logger.error(f"B={B}, S={S}, P={P}, C={C}")
-                    logger.error(f"Merged tokens shape: {tokens.shape}")
-                    logger.error(f"Unmerged tokens shape: {unmerged_for_output.shape}")
-                    raise RuntimeError(f"Token unmerge failed: expected {expected_N} tokens, got {actual_N}")
-
-                # Reshape to [B, S, P, C]
-                unmerged_for_output = unmerged_for_output.view(B, S, P, C)
-                intermediates.append(unmerged_for_output)
-                # Keep tokens merged for next iteration (stays merged in the loop)
-            else:
-                intermediates.append(tokens.view(B, S, P, C))
-
-        # FastVGGT: Final unmerge for output if merging was applied
-        if apply_merging and merge_info is not None:
-            tokens = self.token_merger.unmerge_tokens(tokens, merge_info)
+            # Tokens are automatically at full resolution (unmerging handled in attention)
+            intermediates.append(tokens.view(B, S, P, C))
 
         return tokens, global_idx, intermediates
 
@@ -402,21 +363,24 @@ class Aggregator(nn.Module):
         merge_ratio: float = 0.9,
         salient_stride: int = 10,
         apply_from_block: int = 0,
-        disable_rope: bool = False,
     ):
         """
-        Enable FastVGGT token merging for inference acceleration.
+        Enable FastVGGT token merging for inference acceleration (RoPE-First).
+
+        This uses the RoPE-First architecture where:
+        1. RoPE is applied to ALL tokens (preserves full position info)
+        2. Merging happens AFTER RoPE in the attention layer
+        3. Both src and dst position information is preserved in merged tokens
 
         Args:
             merge_ratio: Fraction of tokens to merge (0.9 = merge 90%, default from paper)
             salient_stride: Stride for salient token selection (10 = ~10% retained)
             apply_from_block: Start merging from this block (0 = all blocks)
-            disable_rope: If True, disable RoPE when merging (recommended for stability)
 
         Example:
             >>> model = VGGTUnified()
             >>> model.aggregator.enable_token_merging(merge_ratio=0.9)
-            >>> # Now inference is 3-4x faster with minimal quality loss
+            >>> # Now inference is 3-4x faster with full position preservation
         """
         self.merging_config = TokenMergingConfig(
             merge_ratio=merge_ratio,
@@ -426,16 +390,10 @@ class Aggregator(nn.Module):
         )
         self.token_merger = TokenMerger(self.merging_config)
         self.use_token_merging = True
-        self.disable_rope_for_merging = disable_rope
 
-        if disable_rope:
-            logger.info(f"FastVGGT token merging enabled (RoPE disabled): merge_ratio={merge_ratio}, "
-                       f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
-        else:
-            logger.info(f"FastVGGT token merging enabled (RoPE active): merge_ratio={merge_ratio}, "
-                       f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
-            logger.warning("Token merging with RoPE may cause instability. "
-                          "Consider using disable_rope=True if you encounter issues.")
+        logger.info(f"FastVGGT token merging enabled (RoPE-First): merge_ratio={merge_ratio}, "
+                   f"salient_stride={salient_stride}, apply_from_block={apply_from_block}")
+        logger.info("Using RoPE-First architecture: RoPE applied before merging for full position preservation")
 
     def disable_token_merging(self):
         """Disable FastVGGT token merging to return to standard inference."""
