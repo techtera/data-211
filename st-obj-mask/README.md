@@ -23,19 +23,24 @@ intermediate_layer_idx: List[int] = [4, 11, 17, 23],
 intermediate_layer_idx: List[int] = [3, 8, 13, 17],
 ```
 
+**✅ ALREADY DONE!**
+
 ## Quick Start
 
 ```bash
-# 1. Update decoder (see above)
-
-# 2. Prepare data
+# 1. Prepare data
 mkdir -p data/images data/masks
 # Copy your images to data/images/ and masks to data/masks/
 
-# 3. Verify student checkpoint
+# 2. Verify student checkpoint
 ls -lh ../kd-encoder/checkpoints_full/student_final.pt
 
-# 4. Train
+# 3. Train
+
+# Multi-GPU (DDP) - RECOMMENDED
+torchrun --nproc_per_node=2 train_ddp.py --epochs 100
+
+# Single GPU (fallback)
 python fine_tune.py
 ```
 

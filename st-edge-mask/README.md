@@ -13,6 +13,11 @@ mkdir -p data/rgb data/masks
 ls -lh ../kd-encoder/checkpoints_full/student_final.pt
 
 # 3. Train
+
+# Multi-GPU (DDP) - RECOMMENDED
+torchrun --nproc_per_node=2 train_ddp.py --epochs 100
+
+# Single GPU (fallback)
 python fine_tune.py
 ```
 
