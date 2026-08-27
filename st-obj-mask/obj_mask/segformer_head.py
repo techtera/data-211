@@ -61,11 +61,11 @@ class DPTHead(nn.Module):
 
     def __init__(
         self,
-        dim_in: int,
+        dim_in: int = 1536,  # Student encoder output dim (768 frame + 768 global)
         patch_size: int = 14,
-        output_dim: int = 4,
+        output_dim: int = 2,  # Background + object
         out_channels: List[int] = [256, 512, 1024, 1024],
-        intermediate_layer_idx: List[int] = [4, 11, 17, 23],
+        intermediate_layer_idx: List[int] = [3, 8, 13, 17],  # Student cached layers
         pos_embed: bool = True,
     ) -> None:
 
