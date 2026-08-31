@@ -86,10 +86,17 @@ def train_epoch_ddp(model, criterion, optimizer, scheduler, dataloader, device, 
 
 
 def validate_ddp(model, criterion, dataloader, device):
-    """Validate with DDP and compute metrics."""
+    """
+    Validate with DDP and compute metrics.
+
+    Note: Model kept in training mode to return 3 outputs (logits, ds1, ds2)
+    for proper loss computation. torch.no_grad() prevents gradient computation
+    and BatchNorm/Dropout still behave correctly since we don't call backward().
+    """
     from fine_tuning.metrics import compute_edge_metrics
 
-    model.eval()
+    # Keep model in training mode to get all 3 outputs
+    model.train()
     val_loss = 0.0
 
     # Accumulate metrics
@@ -104,6 +111,7 @@ def validate_ddp(model, criterion, dataloader, device):
             images = images.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
 
+            # Get 3 outputs for deep supervision loss
             logits, ds1_logits, ds2_logits = model(images)
             loss = criterion(logits, ds1_logits, ds2_logits, masks)
             val_loss += loss.item()
