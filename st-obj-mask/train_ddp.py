@@ -239,6 +239,7 @@ def train_ddp(rank, world_size, args):
 
         import time
         best_val_loss = float('inf')
+        best_val_miou = 0.0
         training_start = time.time()
 
         for epoch in range(NUM_EPOCHS):
@@ -294,9 +295,9 @@ def train_ddp(rank, world_size, args):
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_last.pt")
                     )
 
-                # Save best
-                if SAVE_BEST and val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                # Save best based on mIoU (higher is better)
+                if SAVE_BEST and val_miou > best_val_miou:
+                    best_val_miou = val_miou
                     save_checkpoint(
                         model=model.module,
                         optimizer=optimizer,
@@ -305,7 +306,19 @@ def train_ddp(rank, world_size, args):
                         loss=val_loss,
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best.pt")
                     )
-                    print(f"  ✓ New best checkpoint! Val Loss: {best_val_loss:.4f}")
+                    print(f"  ✓ New best checkpoint! Val mIoU: {best_val_miou:.4f} (Loss: {val_loss:.4f})")
+
+                # Also save best loss checkpoint
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    save_checkpoint(
+                        model=model.module,
+                        optimizer=optimizer,
+                        scheduler=None,
+                        epoch=epoch + 1,
+                        loss=val_loss,
+                        save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best_loss.pt")
+                    )
 
         if is_main_process():
             print("\n" + "="*60)
