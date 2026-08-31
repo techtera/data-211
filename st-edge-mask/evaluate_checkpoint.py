@@ -76,6 +76,37 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     print("EVALUATING...")
     print("="*60)
 
+    # Warmup
+    print("\n[1/2] Warmup (5 iterations)...")
+    dummy_input = torch.randn(1, 1, 3, 518, 518).to(device)  # [B, S, C, H, W]
+    with torch.no_grad():
+        for _ in range(5):
+            _ = model(dummy_input)
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    print("  ✓ Warmup complete")
+
+    # Latency measurement
+    print("\n[2/2] Measuring latency (100 iterations)...")
+    import time
+    latencies = []
+    with torch.no_grad():
+        for _ in range(100):
+            start = time.time()
+            _ = model(dummy_input)
+            if device == 'cuda':
+                torch.cuda.synchronize()
+            latencies.append((time.time() - start) * 1000)  # ms
+
+    avg_latency = sum(latencies) / len(latencies)
+    min_latency = min(latencies)
+    max_latency = max(latencies)
+    throughput = 1000 / avg_latency  # images/sec
+
+    print(f"  ✓ Latency measured: {avg_latency:.2f}ms avg")
+
+    # Accuracy evaluation
+    print("\nComputing metrics on validation set...")
     all_logits = []
     all_targets = []
 
@@ -114,9 +145,15 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     fn = ((preds == 0) & (targets == 1)).sum().item()
     tn = ((preds == 0) & (targets == 0)).sum().item()
 
+    # Per-class metrics
+    precision = tp / (tp + fp + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    f1_score = 2 * (precision * recall) / (precision + recall + 1e-6)
+    iou = tp / (tp + fp + fn + 1e-6)
+
     # Print results
     print("\n" + "="*60)
-    print("RESULTS")
+    print("EDGE DETECTION METRICS")
     print("="*60)
     print(f"Checkpoint Epoch    : {epoch}")
     print(f"Dice Score          : {metrics['dice_score']:.4f}")
@@ -126,9 +163,29 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     print(f"ODS Best Threshold  : {metrics['ods_threshold']:.2f}")
     print(f"ODS Best F1         : {metrics['ods_f1']:.4f}")
 
-    print(f"\nConfusion Matrix:")
-    print(f"  TP={tp:,}, FP={fp:,}")
-    print(f"  FN={fn:,}, TN={tn:,}")
+    print(f"\n" + "="*60)
+    print("CONFUSION MATRIX (Threshold=0.5)")
+    print("="*60)
+    print(f"TP (Edge pixels correctly predicted)    : {tp:,}")
+    print(f"FP (Non-edge predicted as edge)         : {fp:,}")
+    print(f"FN (Edge pixels missed)                 : {fn:,}")
+    print(f"TN (Non-edge correctly predicted)       : {tn:,}")
+    print(f"\nPixel-wise Metrics:")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall:    {recall:.4f}")
+    print(f"  F1 Score:  {f1_score:.4f}")
+    print(f"  IoU:       {iou:.4f}")
+
+    print(f"\n" + "="*60)
+    print("INFERENCE PERFORMANCE")
+    print("="*60)
+    print(f"Avg Latency         : {avg_latency:.2f} ms")
+    print(f"Min Latency         : {min_latency:.2f} ms")
+    print(f"Max Latency         : {max_latency:.2f} ms")
+    print(f"Throughput          : {throughput:.2f} images/sec")
+    print(f"Model Size          : {sum(p.numel() for p in model.parameters()):,} params")
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Trainable Params    : {trainable:,}")
     print("="*60)
 
 

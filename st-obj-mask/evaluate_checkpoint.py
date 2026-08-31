@@ -76,6 +76,37 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     print("EVALUATING...")
     print("="*60)
 
+    # Warmup
+    print("\n[1/2] Warmup (5 iterations)...")
+    dummy_input = torch.randn(1, 3, 518, 518).to(device)
+    with torch.no_grad():
+        for _ in range(5):
+            _ = model(dummy_input)
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    print("  ✓ Warmup complete")
+
+    # Latency measurement
+    print("\n[2/2] Measuring latency (100 iterations)...")
+    import time
+    latencies = []
+    with torch.no_grad():
+        for _ in range(100):
+            start = time.time()
+            _ = model(dummy_input)
+            if device == 'cuda':
+                torch.cuda.synchronize()
+            latencies.append((time.time() - start) * 1000)  # ms
+
+    avg_latency = sum(latencies) / len(latencies)
+    min_latency = min(latencies)
+    max_latency = max(latencies)
+    throughput = 1000 / avg_latency  # images/sec
+
+    print(f"  ✓ Latency measured: {avg_latency:.2f}ms avg")
+
+    # Accuracy evaluation
+    print("\nComputing metrics on validation set...")
     all_preds = []
     all_targets = []
 
@@ -107,9 +138,15 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     fn = ((all_preds == 0) & (all_targets == 1)).sum().item()
     tn = ((all_preds == 0) & (all_targets == 0)).sum().item()
 
+    # Per-class metrics
+    precision_bg = tn / (tn + fn + 1e-6)
+    recall_bg = tn / (tn + fp + 1e-6)
+    precision_obj = tp / (tp + fp + 1e-6)
+    recall_obj = tp / (tp + fn + 1e-6)
+
     # Print results
     print("\n" + "="*60)
-    print("RESULTS")
+    print("SEGMENTATION METRICS")
     print("="*60)
     print(f"Checkpoint Epoch    : {epoch}")
     print(f"Mean IoU            : {metrics['miou']:.4f}")
@@ -118,9 +155,26 @@ def evaluate_checkpoint(checkpoint_path, device='cuda'):
     print(f"IoU Background      : {metrics['iou_background']:.4f}")
     print(f"IoU Object          : {metrics['iou_object']:.4f}")
 
-    print(f"\nConfusion Matrix:")
-    print(f"  Background: TP={tn:,}, FP={fn:,}")
-    print(f"  Object:     TP={tp:,}, FP={fp:,}")
+    print(f"\n" + "="*60)
+    print("CONFUSION MATRIX")
+    print("="*60)
+    print(f"Background:")
+    print(f"  TP={tn:,}, FP={fn:,}")
+    print(f"  Precision: {precision_bg:.4f}, Recall: {recall_bg:.4f}")
+    print(f"\nObject:")
+    print(f"  TP={tp:,}, FP={fp:,}")
+    print(f"  Precision: {precision_obj:.4f}, Recall: {recall_obj:.4f}")
+
+    print(f"\n" + "="*60)
+    print("INFERENCE PERFORMANCE")
+    print("="*60)
+    print(f"Avg Latency         : {avg_latency:.2f} ms")
+    print(f"Min Latency         : {min_latency:.2f} ms")
+    print(f"Max Latency         : {max_latency:.2f} ms")
+    print(f"Throughput          : {throughput:.2f} images/sec")
+    print(f"Model Size          : {sum(p.numel() for p in model.parameters()):,} params")
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Trainable Params    : {trainable:,}")
     print("="*60)
 
 
