@@ -125,6 +125,33 @@ def save_final_checkpoint(
     )
 
 
+def save_checkpoint(model, optimizer, scheduler, epoch, loss, save_path):
+    """
+    Generic checkpoint save function for DDP training.
+
+    Args:
+        model: Model to save (already unwrapped from DDP)
+        optimizer: Optimizer state
+        scheduler: Learning rate scheduler (can be None)
+        epoch: Current epoch number
+        loss: Current loss value
+        save_path: Full path where to save the checkpoint
+    """
+    checkpoint = {
+        "epoch": epoch,
+        "loss": loss,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+
+    if scheduler is not None:
+        checkpoint["scheduler_state_dict"] = scheduler.state_dict()
+
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    torch.save(checkpoint, save_path)
+    print(f"  ✓ Checkpoint saved: {save_path}")
+
+
 def load_checkpoint(
     model,
     optimizer,

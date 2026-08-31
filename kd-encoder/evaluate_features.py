@@ -133,32 +133,6 @@ def compute_similarity(student_feats, teacher_feats):
     return similarities
 
 
-def compute_direct_similarity(student_feats, teacher_feats):
-    """
-    Compute direct cosine similarity on first N dimensions.
-
-    Compares student[0:1536] with teacher[0:1536] directly.
-    """
-    similarities = []
-
-    for s_feat, t_feat in zip(student_feats, teacher_feats):
-        # Flatten
-        s_flat = s_feat.flatten(0, 2)  # [N, 1536]
-        t_flat = t_feat.flatten(0, 2)  # [N, 2048]
-
-        # Compare first 1536 dimensions
-        t_trimmed = t_flat[:, :1536]
-
-        # Cosine similarity
-        s_norm = F.normalize(s_flat, dim=1)
-        t_norm = F.normalize(t_trimmed, dim=1)
-
-        sim = (s_norm * t_norm).sum(dim=1).mean().item()
-        similarities.append(sim)
-
-    return similarities
-
-
 def interpret_results(similarities, method="correlation"):
     """Interpret similarity scores."""
     avg_sim = sum(similarities) / len(similarities)
@@ -268,17 +242,11 @@ def main():
     corr_sims = compute_similarity(student_feats, teacher_feats)
     avg_corr = interpret_results(corr_sims, method="Cross-Correlation")
 
-    # Method 2: Direct comparison (first 1536 dims)
-    print(f"\n{'='*60}")
-    direct_sims = compute_direct_similarity(student_feats, teacher_feats)
-    avg_direct = interpret_results(direct_sims, method="Direct Cosine (1536-dim)")
-
     # Summary
     print(f"\n{'='*60}")
     print("FINAL SUMMARY")
     print(f"{'='*60}")
     print(f"\nCross-Correlation Score: {avg_corr:.4f}")
-    print(f"Direct Cosine Score: {avg_direct:.4f}")
     print(f"\nBoth scores should be >0.75 for good distillation.")
     print(f"\nCheckpoint evaluated: {args.student}")
     print(f"Tested on {len(valid_paths)} images")
