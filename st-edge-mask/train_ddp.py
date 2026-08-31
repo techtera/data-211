@@ -338,6 +338,77 @@ def train_ddp(rank, world_size, args):
             print("✓ Training Complete!")
             print("="*60)
 
+            # Final evaluation on best model
+            print("\n" + "="*60)
+            print("FINAL EVALUATION - BEST MODEL")
+            print("="*60)
+
+            # Load best checkpoint
+            best_checkpoint = torch.load(
+                os.path.join(CHECKPOINT_DIR, "checkpoint_best.pt"),
+                map_location=device
+            )
+            model.module.load_state_dict(best_checkpoint['model_state_dict'])
+
+            # Run final evaluation
+            from fine_tuning.metrics import compute_complete_edge_metrics
+            model.train()  # Keep in training mode for 3 outputs
+
+            all_logits = []
+            all_targets = []
+            total_loss = 0.0
+
+            with torch.no_grad():
+                for images, masks in val_loader:
+                    images = images.to(device)
+                    masks = masks.to(device)
+
+                    logits, ds1_logits, ds2_logits = model(images)
+                    loss = criterion(logits, ds1_logits, ds2_logits, masks)
+                    total_loss += loss.item()
+
+                    all_logits.append(logits.cpu())
+                    all_targets.append(masks.cpu())
+
+            # Concatenate all
+            all_logits = torch.cat(all_logits)
+            all_targets = torch.cat(all_targets)
+
+            # Compute final metrics
+            final_loss = total_loss / len(val_loader)
+
+            # Compute complete metrics (BF1, ODS, Dice)
+            final_metrics = compute_complete_edge_metrics(all_logits, all_targets)
+
+            # Confusion matrix at 0.5 threshold
+            preds_flat = (torch.sigmoid(all_logits) > 0.5).float().view(-1)
+            targets_flat = all_targets.view(-1)
+
+            tp = ((preds_flat == 1) & (targets_flat == 1)).sum().item()
+            fp = ((preds_flat == 1) & (targets_flat == 0)).sum().item()
+            fn = ((preds_flat == 0) & (targets_flat == 1)).sum().item()
+            tn = ((preds_flat == 0) & (targets_flat == 0)).sum().item()
+
+            print(f"\nValidation Loss     : {final_loss:.4f}")
+            print(f"Dice Score          : {final_metrics['dice_score']:.4f}")
+            print(f"BF1 Precision       : {final_metrics['bf1_precision']:.4f}")
+            print(f"BF1 Recall          : {final_metrics['bf1_recall']:.4f}")
+            print(f"BF1 F1              : {final_metrics['bf1_f1']:.4f}")
+            print(f"ODS Best Threshold  : {final_metrics['ods_threshold']:.2f}")
+            print(f"ODS Best F1         : {final_metrics['ods_f1']:.4f}")
+
+            print(f"\nConfusion Matrix:")
+            print(f"  TP={tp:,}, FP={fp:,}")
+            print(f"  FN={fn:,}, TN={tn:,}")
+
+            print(f"\n" + "="*60)
+            print("Training Summary")
+            print("="*60)
+            print(f"Total Epochs        : {NUM_EPOCHS}")
+            print(f"Best Val F1         : {best_val_f1:.4f}")
+            print(f"Best Val Loss       : {best_val_loss:.4f}")
+            print(f"Final Checkpoint    : checkpoints/checkpoint_best.pt")
+
     finally:
         cleanup_ddp()
 

@@ -325,6 +325,75 @@ def train_ddp(rank, world_size, args):
             print("✓ Training Complete!")
             print("="*60)
 
+            # Final evaluation on best model
+            print("\n" + "="*60)
+            print("FINAL EVALUATION - BEST MODEL")
+            print("="*60)
+
+            # Load best checkpoint
+            best_checkpoint = torch.load(
+                os.path.join(CHECKPOINT_DIR, "checkpoint_best.pt"),
+                map_location=device
+            )
+            model.module.load_state_dict(best_checkpoint['model_state_dict'])
+
+            # Run final evaluation
+            from fine_tuning.metrics import compute_segmentation_metrics
+            model.eval()
+
+            all_preds = []
+            all_targets = []
+            total_loss = 0.0
+
+            with torch.no_grad():
+                for images, masks in val_loader:
+                    images = images.to(device)
+                    masks = masks.to(device)
+
+                    logits = model(images)
+                    loss = criterion(logits, masks)
+                    total_loss += loss.item()
+
+                    # Get predictions
+                    preds = logits.argmax(dim=1)
+                    all_preds.append(preds.cpu())
+                    all_targets.append(masks.cpu())
+
+            # Concatenate all
+            all_preds = torch.cat(all_preds)
+            all_targets = torch.cat(all_targets)
+
+            # Compute final metrics
+            final_loss = total_loss / len(val_loader)
+            logits_dummy = torch.zeros(all_preds.shape[0], 2, all_preds.shape[1], all_preds.shape[2])
+            logits_dummy.scatter_(1, all_preds.unsqueeze(1), 1)
+            final_metrics = compute_segmentation_metrics(logits_dummy, all_targets, num_classes=2)
+
+            # Confusion matrix
+            tp = ((all_preds == 1) & (all_targets == 1)).sum().item()
+            fp = ((all_preds == 1) & (all_targets == 0)).sum().item()
+            fn = ((all_preds == 0) & (all_targets == 1)).sum().item()
+            tn = ((all_preds == 0) & (all_targets == 0)).sum().item()
+
+            print(f"\nValidation Loss     : {final_loss:.4f}")
+            print(f"Pixel Accuracy      : {final_metrics['pixel_accuracy']:.4f}")
+            print(f"Dice Score          : {final_metrics['mean_dice']:.4f}")
+            print(f"Mean IoU            : {final_metrics['miou']:.4f}")
+            print(f"IoU Background      : {final_metrics['iou_background']:.4f}")
+            print(f"IoU Object          : {final_metrics['iou_object']:.4f}")
+
+            print(f"\nConfusion Matrix:")
+            print(f"  Background: TP={tn:,}, FP={fn:,}")
+            print(f"  Object:     TP={tp:,}, FP={fp:,}")
+
+            print(f"\n" + "="*60)
+            print("Training Summary")
+            print("="*60)
+            print(f"Total Epochs        : {NUM_EPOCHS}")
+            print(f"Best Val mIoU       : {best_val_miou:.4f}")
+            print(f"Best Val Loss       : {best_val_loss:.4f}")
+            print(f"Final Checkpoint    : checkpoints/checkpoint_best.pt")
+
     finally:
         cleanup_ddp()
 
