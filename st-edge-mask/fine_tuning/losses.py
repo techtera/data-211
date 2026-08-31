@@ -47,7 +47,11 @@ class EdgeLoss(nn.Module):
         self.pos_weight_max = POS_WEIGHT_CLAMP[1]
 
     def forward(self, pred_logits, target):
-
+        """
+        Args:
+            pred_logits: [B, 1, H, W] or [B, S, 1, H, W]
+            target: [B, 1, H, W] or [B, S, 1, H, W]
+        """
         # --------------------------------------------------------
         # Dynamic pos_weight (per batch)
         # --------------------------------------------------------
@@ -64,10 +68,18 @@ class EdgeLoss(nn.Module):
         # Weighted BCE
         # --------------------------------------------------------
 
+        # Expand pos_weight to match pred_logits shape
+        if pred_logits.ndim == 5:
+            # [B, S, 1, H, W]
+            pos_weight_expanded = pos_weight.view(1, 1, 1, 1, 1).expand_as(pred_logits)
+        else:
+            # [B, 1, H, W]
+            pos_weight_expanded = pos_weight.view(1, 1, 1, 1).expand_as(pred_logits)
+
         bce = F.binary_cross_entropy_with_logits(
             pred_logits,
             target,
-            pos_weight=pos_weight.view(1, 1, 1, 1).expand_as(pred_logits),
+            pos_weight=pos_weight_expanded,
         )
 
         # --------------------------------------------------------
@@ -119,19 +131,46 @@ def compute_total_loss(final_logits, ds1_logits, ds2_logits, target, loss_fn):
 
 
 # ============================================================
+# Wrapper for Training (Deep Supervision)
+# ============================================================
+
+class DeepSupervisionEdgeLoss(nn.Module):
+    """
+    Wrapper that combines EdgeLoss with deep supervision.
+    Accepts 4 arguments: final_logits, ds1_logits, ds2_logits, target.
+    """
+    def __init__(self):
+        super().__init__()
+        self.loss_fn = EdgeLoss()
+
+    def forward(self, final_logits, ds1_logits, ds2_logits, target):
+        """
+        Args:
+            final_logits: [B, 1, H, W] or [B, S, 1, H, W]
+            ds1_logits: [B, 1, H, W] or [B, S, 1, H, W]
+            ds2_logits: [B, 1, H, W] or [B, S, 1, H, W]
+            target: [B, 1, H, W] or [B, S, 1, H, W]
+
+        Returns:
+            Combined loss scalar
+        """
+        return compute_total_loss(final_logits, ds1_logits, ds2_logits, target, self.loss_fn)
+
+
+# ============================================================
 # Build Loss
 # ============================================================
 
 def build_loss():
     """
-    Build the EdgeLoss criterion.
+    Build the EdgeLoss criterion with deep supervision wrapper.
     """
 
     print("=" * 60)
     print("Building Loss Function")
     print("=" * 60)
 
-    criterion = EdgeLoss().to(DEVICE)
+    criterion = DeepSupervisionEdgeLoss().to(DEVICE)
 
     print(f"BCE Weight         : {BCE_WEIGHT}")
     print(f"Dice Weight        : {DICE_WEIGHT}")

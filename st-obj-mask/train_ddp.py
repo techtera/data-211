@@ -40,13 +40,9 @@ def train_epoch_ddp(model, criterion, optimizer, dataloader, device, epoch):
         masks = masks.to(device, non_blocking=True)
 
         # Forward
-        logits = model(images)
+        logits = model(images)  # [B, 2, H, W]
 
-        # Reshape for loss: [B, S, 2, H, W] -> [B, 2, H, W] and [B, S, H, W] -> [B, H, W]
-        logits = logits.squeeze(1)
-        masks = masks.squeeze(1)
-
-        # Loss
+        # Loss (masks are already [B, H, W] from dataset)
         loss = criterion(logits, masks)
 
         # Backward
@@ -79,11 +75,7 @@ def validate_ddp(model, criterion, dataloader, device):
             images = images.to(device, non_blocking=True)
             masks = masks.to(device, non_blocking=True)
 
-            logits = model(images)
-
-            # Reshape
-            logits = logits.squeeze(1)
-            masks = masks.squeeze(1)
+            logits = model(images)  # [B, 2, H, W]
 
             loss = criterion(logits, masks)
             val_loss += loss.item()
