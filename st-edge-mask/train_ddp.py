@@ -255,8 +255,11 @@ def train_ddp(rank, world_size, args):
             print("="*60)
 
         import time
+        from fine_tuning.config import PATIENCE
+
         best_val_loss = float('inf')
         best_val_f1 = 0.0
+        patience_counter = 0
         training_start = time.time()
 
         for epoch in range(NUM_EPOCHS):
@@ -311,6 +314,7 @@ def train_ddp(rank, world_size, args):
                 # Save best based on F1 score (higher is better)
                 if SAVE_BEST and val_f1 > best_val_f1:
                     best_val_f1 = val_f1
+                    patience_counter = 0  # Reset patience on improvement
                     save_checkpoint(
                         model=model.module,
                         optimizer=optimizer,
@@ -320,6 +324,9 @@ def train_ddp(rank, world_size, args):
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best.pt")
                     )
                     print(f"  ✓ New best checkpoint! Val F1: {best_val_f1:.4f} (Loss: {val_loss:.4f})")
+                else:
+                    patience_counter += 1
+                    print(f"  No improvement. Patience: {patience_counter}/{PATIENCE}")
 
                 # Also save best loss checkpoint
                 if val_loss < best_val_loss:
@@ -332,6 +339,13 @@ def train_ddp(rank, world_size, args):
                         loss=val_loss,
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best_loss.pt")
                     )
+
+                # Early stopping check
+                if patience_counter >= PATIENCE:
+                    print(f"\n⚠️  Early stopping at epoch {epoch+1} (no improvement for {PATIENCE} epochs)")
+                    print(f"  Best Val F1: {best_val_f1:.4f}")
+                    print(f"  Best Val Loss: {best_val_loss:.4f}")
+                    break
 
         if is_main_process():
             print("\n" + "="*60)

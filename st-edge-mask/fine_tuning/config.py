@@ -30,6 +30,8 @@ CHECKPOINT_DIR = "checkpoints"
 SAVE_EVERY = 0
 SAVE_LATEST = True
 SAVE_BEST = True
-PATIENCE = 15
+
+# Early stopping
+PATIENCE = 15  # Stop if no improvement for 15 epochs
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -6,7 +6,7 @@ STUDENT_CHECKPOINT = "../kd-encoder/checkpoints_full/student_final.pt"
 
 IMAGE_SIZE = 518
 NUM_CLASSES = 2
-BATCH_SIZE = 4
+BATCH_SIZE = 2  # Original used 2, not 4
 NUM_WORKERS = 4
 
 DATASET_ROOT = "data"
