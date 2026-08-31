@@ -82,9 +82,17 @@ def train_epoch_ddp(model, criterion, optimizer, dataloader, device, epoch):
 
 
 def validate_ddp(model, criterion, dataloader, device):
-    """Validate with DDP."""
+    """Validate with DDP and compute metrics."""
+    from fine_tuning.metrics import compute_segmentation_metrics
+
     model.eval()
     val_loss = 0.0
+
+    # Accumulate metrics
+    total_miou = 0.0
+    total_dice = 0.0
+    total_pixel_acc = 0.0
+    num_batches = 0
 
     with torch.no_grad():
         for images, masks in dataloader:
@@ -96,7 +104,19 @@ def validate_ddp(model, criterion, dataloader, device):
             loss = criterion(logits, masks)
             val_loss += loss.item()
 
-    return val_loss / len(dataloader)
+            # Compute metrics
+            metrics = compute_segmentation_metrics(logits, masks, num_classes=2)
+            total_miou += metrics['miou']
+            total_dice += metrics['mean_dice']
+            total_pixel_acc += metrics['pixel_accuracy']
+            num_batches += 1
+
+    avg_loss = val_loss / len(dataloader)
+    avg_miou = total_miou / num_batches
+    avg_dice = total_dice / num_batches
+    avg_pixel_acc = total_pixel_acc / num_batches
+
+    return avg_loss, avg_miou, avg_dice, avg_pixel_acc
 
 
 def train_ddp(rank, world_size, args):
@@ -237,9 +257,10 @@ def train_ddp(rank, world_size, args):
 
             # Validate (optional)
             if len(val_loader) > 0:
-                val_loss = validate_ddp(model, criterion, val_loader, device)
+                val_loss, val_miou, val_dice, val_pixel_acc = validate_ddp(model, criterion, val_loader, device)
             else:
                 val_loss = train_loss
+                val_miou = val_dice = val_pixel_acc = 0.0
 
             # Time estimation
             epoch_time = time.time() - epoch_start
@@ -259,6 +280,7 @@ def train_ddp(rank, world_size, args):
                 eta_min = int((eta_total % 3600) // 60)
 
                 print(f"\n  Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+                print(f"  Val mIoU: {val_miou:.4f}, Dice: {val_dice:.4f}, Pixel Acc: {val_pixel_acc:.4f}")
                 print(f"  Epoch Time: {epoch_min}m {epoch_sec}s | ETA: {eta_hours}h {eta_min}m ({epochs_remaining} epochs left)")
 
                 # Save last

@@ -86,9 +86,18 @@ def train_epoch_ddp(model, criterion, optimizer, scheduler, dataloader, device, 
 
 
 def validate_ddp(model, criterion, dataloader, device):
-    """Validate with DDP."""
+    """Validate with DDP and compute metrics."""
+    from fine_tuning.metrics import compute_edge_metrics
+
     model.eval()
     val_loss = 0.0
+
+    # Accumulate metrics
+    total_precision = 0.0
+    total_recall = 0.0
+    total_f1 = 0.0
+    total_iou = 0.0
+    num_batches = 0
 
     with torch.no_grad():
         for images, masks in dataloader:
@@ -99,7 +108,21 @@ def validate_ddp(model, criterion, dataloader, device):
             loss = criterion(logits, ds1_logits, ds2_logits, masks)
             val_loss += loss.item()
 
-    return val_loss / len(dataloader)
+            # Compute metrics on final output
+            metrics = compute_edge_metrics(logits, masks, threshold=0.5)
+            total_precision += metrics['precision']
+            total_recall += metrics['recall']
+            total_f1 += metrics['f1_score']
+            total_iou += metrics['iou']
+            num_batches += 1
+
+    avg_loss = val_loss / len(dataloader)
+    avg_precision = total_precision / num_batches
+    avg_recall = total_recall / num_batches
+    avg_f1 = total_f1 / num_batches
+    avg_iou = total_iou / num_batches
+
+    return avg_loss, avg_precision, avg_recall, avg_f1, avg_iou
 
 
 def train_ddp(rank, world_size, args):
@@ -242,7 +265,7 @@ def train_ddp(rank, world_size, args):
             )
 
             # Validate
-            val_loss = validate_ddp(model, criterion, val_loader, device)
+            val_loss, val_precision, val_recall, val_f1, val_iou = validate_ddp(model, criterion, val_loader, device)
 
             # Time estimation
             epoch_time = time.time() - epoch_start
@@ -262,6 +285,7 @@ def train_ddp(rank, world_size, args):
                 eta_min = int((eta_total % 3600) // 60)
 
                 print(f"\n  Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+                print(f"  Val Precision: {val_precision:.4f}, Recall: {val_recall:.4f}, F1: {val_f1:.4f}, IoU: {val_iou:.4f}")
                 print(f"  Epoch Time: {epoch_min}m {epoch_sec}s | ETA: {eta_hours}h {eta_min}m ({epochs_remaining} epochs left)")
 
                 # Save last
