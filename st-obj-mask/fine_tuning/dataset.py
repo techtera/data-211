@@ -44,6 +44,9 @@ class SegmentationDataset(Dataset):
         self.transform = transform
 
         self.images = []
+        skipped_missing = 0
+        skipped_empty = 0
+        skipped_invalid = 0
 
         for file in sorted(os.listdir(self.image_dir)):
 
@@ -53,15 +56,45 @@ class SegmentationDataset(Dataset):
             label_name = os.path.splitext(file)[0] + ".txt"
             label_path = os.path.join(self.label_dir, label_name)
 
+            # Skip if label file doesn't exist
             if not os.path.exists(label_path):
-                raise FileNotFoundError(
-                    f"Missing label file for image '{file}'. "
-                    f"Expected: {label_path}"
-                )
+                skipped_missing += 1
+                continue
+
+            # Validate label file is not empty and has valid content
+            try:
+                with open(label_path, "r") as f:
+                    line = f.readline().strip()
+
+                if line == "":
+                    skipped_empty += 1
+                    continue
+
+                values = list(map(float, line.split()))
+
+                # Need at least: class_id + 3 polygon points (6 coordinates)
+                if len(values) < 7:
+                    skipped_invalid += 1
+                    continue
+
+                # Check coordinate count is even
+                if len(values[1:]) % 2 != 0:
+                    skipped_invalid += 1
+                    continue
+
+            except Exception as e:
+                skipped_invalid += 1
+                continue
 
             self.images.append(file)
 
-        print(f"Loaded {len(self.images)} image-label pairs.")
+        print(f"Loaded {len(self.images)} valid image-label pairs.")
+        if skipped_missing > 0:
+            print(f"  Skipped {skipped_missing} images with missing labels")
+        if skipped_empty > 0:
+            print(f"  Skipped {skipped_empty} images with empty labels")
+        if skipped_invalid > 0:
+            print(f"  Skipped {skipped_invalid} images with invalid labels")
 
     def __len__(self):
         return len(self.images)

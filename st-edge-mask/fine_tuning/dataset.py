@@ -71,21 +71,45 @@ class EdgeMaskDataset(Dataset):
             if f.lower().endswith((".png", ".jpg", ".jpeg"))
         ])
 
-        self.image_names = [
-            f for f in all_images
-            if Path(f).stem in mask_stems
-        ]
+        # Filter to valid pairs and validate files can be opened
+        valid_image_names = []
+        skipped_corrupt = 0
+
+        for f in all_images:
+            stem = Path(f).stem
+            if stem not in mask_stems:
+                continue
+
+            # Validate both RGB and mask can be opened
+            rgb_path = self.rgb_dir / f
+            mask_path = self.mask_dir / f"{stem}_mask{Path(f).suffix}"
+
+            try:
+                # Quick validation - just open and close
+                with Image.open(rgb_path) as img:
+                    img.verify()
+                with Image.open(mask_path) as img:
+                    img.verify()
+                valid_image_names.append(f)
+            except Exception as e:
+                skipped_corrupt += 1
+                continue
+
+        self.image_names = valid_image_names
 
         # Logging
         total_rgb = len(all_images)
         total_masks = len(mask_stems)
         valid_pairs = len(self.image_names)
-        missing_masks = total_rgb - valid_pairs
+        missing_masks = total_rgb - len([f for f in all_images if Path(f).stem in mask_stems])
 
         print(f"  Total RGB files  : {total_rgb}")
         print(f"  Total mask files : {total_masks}")
         print(f"  Valid pairs      : {valid_pairs}")
-        print(f"  Missing masks    : {missing_masks}")
+        if missing_masks > 0:
+            print(f"  Missing masks    : {missing_masks}")
+        if skipped_corrupt > 0:
+            print(f"  Skipped corrupt  : {skipped_corrupt}")
 
         self.rgb_transform = transforms.Compose([
             transforms.Resize(

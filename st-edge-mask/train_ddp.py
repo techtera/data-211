@@ -35,8 +35,11 @@ from fine_tuning.checkpoints import save_checkpoint
 
 def train_epoch_ddp(model, criterion, optimizer, scheduler, dataloader, device, epoch, config):
     """Train one epoch with DDP."""
+    import time
+
     model.train()
     epoch_loss = 0.0
+    epoch_start = time.time()
 
     for batch_idx, (images, masks) in enumerate(dataloader):
         images = images.to(device, non_blocking=True)
@@ -64,7 +67,20 @@ def train_epoch_ddp(model, criterion, optimizer, scheduler, dataloader, device, 
         if is_main_process() and (batch_idx + 1) % LOG_EVERY == 0:
             lr = optimizer.param_groups[0]['lr']
             avg_loss = epoch_loss / (batch_idx + 1)
-            print(f"  [{batch_idx+1}/{len(dataloader)}] Loss: {avg_loss:.4f}, LR: {lr:.6f}")
+
+            # Time estimation
+            elapsed = time.time() - epoch_start
+            steps_done = batch_idx + 1
+            steps_remaining = len(dataloader) - steps_done
+            time_per_step = elapsed / steps_done
+            eta_epoch = steps_remaining * time_per_step
+
+            # Format time
+            eta_min = int(eta_epoch // 60)
+            eta_sec = int(eta_epoch % 60)
+
+            print(f"  [{steps_done}/{len(dataloader)}] Loss: {avg_loss:.4f}, LR: {lr:.6f}, "
+                  f"ETA: {eta_min}m {eta_sec}s ({time_per_step:.2f}s/step)")
 
     return epoch_loss / len(dataloader)
 
@@ -207,9 +223,12 @@ def train_ddp(rank, world_size, args):
             print(f"\n[5] Starting training...")
             print("="*60)
 
+        import time
         best_val_loss = float('inf')
+        training_start = time.time()
 
         for epoch in range(NUM_EPOCHS):
+            epoch_start = time.time()
             train_sampler.set_epoch(epoch)  # Shuffle differently each epoch
 
             if is_main_process():
@@ -225,9 +244,25 @@ def train_ddp(rank, world_size, args):
             # Validate
             val_loss = validate_ddp(model, criterion, val_loader, device)
 
+            # Time estimation
+            epoch_time = time.time() - epoch_start
+
             # Save checkpoints (main process only)
             if is_main_process():
+                # Calculate ETA
+                epochs_done = epoch + 1
+                epochs_remaining = NUM_EPOCHS - epochs_done
+                avg_epoch_time = (time.time() - training_start) / epochs_done
+                eta_total = epochs_remaining * avg_epoch_time
+
+                # Format times
+                epoch_min = int(epoch_time // 60)
+                epoch_sec = int(epoch_time % 60)
+                eta_hours = int(eta_total // 3600)
+                eta_min = int((eta_total % 3600) // 60)
+
                 print(f"\n  Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+                print(f"  Epoch Time: {epoch_min}m {epoch_sec}s | ETA: {eta_hours}h {eta_min}m ({epochs_remaining} epochs left)")
 
                 # Save last
                 if SAVE_LATEST:
