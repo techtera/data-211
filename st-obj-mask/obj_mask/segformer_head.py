@@ -80,9 +80,15 @@ class DPTHead(nn.Module):
         #
         # Transformer token embeddings are normalized before being converted
         # into spatial feature maps.
+        #
+        # CRITICAL FIX: Use separate LayerNorm per feature layer
+        # Each layer has vastly different scales (variance: 33k-5.7M)
+        # Shared norm cannot optimally normalize all layers
         ####################################################################
 
-        self.norm = nn.LayerNorm(dim_in)
+        self.norms = nn.ModuleList([
+            nn.LayerNorm(dim_in) for _ in range(len(intermediate_layer_idx))
+        ])
 
         ####################################################################
         # Projection Layers
@@ -431,9 +437,10 @@ class DPTHead(nn.Module):
 
             ################################################################
             # Normalize transformer embeddings.
+            # CRITICAL FIX: Use layer-specific norm (not shared)
             ################################################################
 
-            x = self.norm(x)
+            x = self.norms[dpt_idx](x)
 
             ################################################################
             # Convert token sequence back into a spatial feature map.
