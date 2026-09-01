@@ -119,14 +119,27 @@ def initialize_student_from_dinov2_large(
     # Helper: project 1024→768 by taking first 768 channels
     def project_weight(weight_1024):
         """Project 1024-dim weight to 768-dim by truncation."""
-        if weight_1024.shape[0] == 1024:
-            return weight_1024[:768].clone()
+        # 1D weights: [1024] → [768] (check first to avoid shape[1] access)
+        if len(weight_1024.shape) == 1:
+            if weight_1024.shape[0] == 1024:
+                return weight_1024[:768].clone()
+            else:
+                return weight_1024.clone()
+
+        # IMPORTANT: Check QKV case FIRST (before generic shape[1] check)
+        # QKV: [3072, 1024] → [2304, 768] (3×1024 → 3×768)
+        if weight_1024.shape[0] == 3072 and weight_1024.shape[1] == 1024:
+            return weight_1024[:2304, :768].clone()
+        # Square weights: [1024, 1024] → [768, 768]
+        elif weight_1024.shape[0] == 1024 and weight_1024.shape[1] == 1024:
+            return weight_1024[:768, :768].clone()
+        # Rectangular weights with 1024 columns: [X, 1024] → [X, 768]
         elif weight_1024.shape[1] == 1024:
             return weight_1024[:, :768].clone()
+        # Rectangular weights with 1024 rows: [1024, X] → [768, X]
+        elif weight_1024.shape[0] == 1024:
+            return weight_1024[:768, :].clone()
         else:
-            # For QKV: [3072, 1024] → [2304, 768]
-            if weight_1024.shape[0] == 3072:
-                return weight_1024[:2304, :768].clone()
             return weight_1024.clone()
 
     def project_bias(bias_1024):
