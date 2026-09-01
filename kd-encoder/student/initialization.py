@@ -225,6 +225,14 @@ def initialize_student_from_dinov2_large(
         print(f"  ✓ Camera token: Random (std=1e-6)")
         print(f"  ✓ Register tokens: Random (std=1e-6)")
 
+    # 5. Ensure all parameters are on the same device (DDP requirement)
+    # Get the device of the first parameter
+    first_param = next(student.parameters())
+    target_device = first_param.device
+
+    # Move student to target device (ensures output_norm and all components are on same device)
+    student.to(target_device)
+
     if verbose:
         print("\n" + "="*60)
         print("✓ Initialization Complete (DINOv2-Large)")
@@ -236,6 +244,7 @@ def initialize_student_from_dinov2_large(
         print(f"  - Frame blocks 0-17: Projected from DINOv2-Large")
         print(f"  - Global blocks 0-17: Copied from frame blocks")
         print(f"  - Special tokens: Random")
+        print(f"  - Device: {target_device}")
         print(f"\nNote: Both branches start identical and will diverge during training.")
 
 
@@ -339,6 +348,11 @@ def initialize_student_from_dinov2(
         print(f"  ✓ Camera token: Random (std=1e-6)")
         print(f"  ✓ Register tokens: Random (std=1e-6)")
 
+    # 5. Ensure all parameters are on the same device (DDP requirement)
+    first_param = next(student.parameters())
+    target_device = first_param.device
+    student.to(target_device)
+
     if verbose:
         print("\n" + "="*60)
         print("✓ Initialization Complete")
@@ -350,6 +364,7 @@ def initialize_student_from_dinov2(
         print(f"  - Global blocks 0-11: DINOv2 pretrained (same as frame)")
         print(f"  - Global blocks 12-17: Random")
         print(f"  - Special tokens: Random")
+        print(f"  - Device: {target_device}")
         print(f"\nNote: Frame and global branches start with identical weights.")
         print(f"      They will specialize during training via gradient updates.")
 
