@@ -5,6 +5,10 @@ import torch.nn.functional as F
 
 class FeatureProjection(nn.Module):
     def __init__(self, in_ch=1536, out_ch=64, target_size=None, downsample=False):
+        """
+        Feature projection for student encoder (1536-dim input).
+        Note: Teacher uses 2048-dim input, student uses 1536-dim (768×2).
+        """
         super().__init__()
         self.target_size = target_size
         self.downsample = downsample
@@ -54,14 +58,6 @@ class StudentFeatureExtractor(nn.Module):
         self.layer_indices = [3, 8, 13, 17]
         self.patch_start_idx = 5
 
-        # CRITICAL FIX: Normalize student features to match teacher scale
-        # Student outputs unnormalized features (mean=-1076, std=27k)
-        # Teacher outputs normalized features (mean~0, std~2)
-        # LayerNorm normalizes immediately + learns optimal scale during training
-        self.input_norms = nn.ModuleList([
-            nn.LayerNorm(1536) for _ in range(4)
-        ])
-
         self.projections = nn.ModuleList([
             FeatureProjection(1536, 64, target_size=(148, 148)),
             FeatureProjection(1536, 128, target_size=(74, 74)),
@@ -82,16 +78,10 @@ class StudentFeatureExtractor(nn.Module):
                 raise ValueError(f"Layer {layer_idx} returned None - check student caching")
             x = x[:, :, self.patch_start_idx:]
             x = x.reshape(B * S, x.shape[2], x.shape[3])
-
-            # CRITICAL FIX: Normalize BEFORE projection
-            # Detach BEFORE normalization: freeze encoder, but train LayerNorm
-            # x shape: [B*S, Patches, 1536]
-            x = x.detach()  # Stop gradients to encoder
-            x_norm = self.input_norms[i](x)  # Normalize (gradients flow to LayerNorm)
-
-            x_norm = x_norm.permute(0, 2, 1)  # [B*S, 1536, Patches]
-            x_norm = x_norm.reshape(B * S, 1536, 37, 37)
-            x_proj = self.projections[i](x_norm)
-            features.append(x_proj)
+            x = x.permute(0, 2, 1)
+            x = x.reshape(B * S, 1536, 37, 37)
+            x = x.detach()
+            x = self.projections[i](x)
+            features.append(x)
 
         return features

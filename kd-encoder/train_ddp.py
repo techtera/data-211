@@ -20,7 +20,7 @@ from torch.utils.data.distributed import DistributedSampler
 import sys
 import os
 
-from student import StudentAggregator, initialize_student_from_dinov2
+from student import StudentAggregator, initialize_student_from_dinov2_large
 from training import (
     TrainingConfig,
     create_dataloader,
@@ -74,7 +74,7 @@ def train_ddp(rank, world_size, args):
             print("\n[2] Initializing student...")
         student = StudentAggregator().to(device)
         if not args.resume_from:
-            initialize_student_from_dinov2(student, verbose=is_main_process())
+            initialize_student_from_dinov2_large(student, verbose=is_main_process())
 
         # Wrap student with FeaturesOnlyWrapper then DDP (consistent with sanity_check_ddp.py)
         from training.trainer import FeaturesOnlyWrapper

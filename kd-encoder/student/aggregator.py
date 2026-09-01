@@ -141,6 +141,11 @@ class StudentAggregator(nn.Module):
         for name, value in (("_resnet_mean", _RESNET_MEAN), ("_resnet_std", _RESNET_STD)):
             self.register_buffer(name, torch.FloatTensor(value).view(1, 1, 3, 1, 1), persistent=False)
 
+        # Output normalization (CRITICAL: normalizes concatenated features to stable scale)
+        # This ensures output has mean~0, std~1 similar to teacher encoder
+        # Prevents downstream decoder Conv2d saturation from unnormalized features
+        self.output_norm = nn.LayerNorm(embed_dim * 2)  # 1536-dim (768 frame + 768 global)
+
     def forward(self, images: torch.Tensor) -> Tuple[List[Optional[torch.Tensor]], int]:
         """
         Forward pass through student encoder.
@@ -233,6 +238,12 @@ class StudentAggregator(nn.Module):
                 frame_output = tokens_frame.view(B, S, P, C)
                 global_output = tokens_global.view(B, S, P, C)
                 concat_output = torch.cat([frame_output, global_output], dim=-1)  # [B, S, P, 2C]
+
+                # CRITICAL: Normalize output to stable scale (prevents decoder saturation)
+                # Teacher encoder outputs normalized features (mean~0, std~2)
+                # Without this, student outputs unnormalized features (mean~-1077, std~27k)
+                concat_output = self.output_norm(concat_output)
+
                 output_list.append(concat_output)
             else:
                 output_list.append(None)
