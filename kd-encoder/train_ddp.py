@@ -72,7 +72,7 @@ def train_ddp(rank, world_size, args):
         # Initialize student
         if is_main_process():
             print("\n[2] Initializing student...")
-        student = StudentAggregator().to(device)
+        student = StudentAggregator(embed_dim=768, depth=18).to(device)
         if not args.resume_from:
             initialize_student_from_dinov2_large(student, verbose=is_main_process())
 
