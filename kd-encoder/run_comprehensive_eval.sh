@@ -17,7 +17,7 @@ echo ""
 # Configuration
 STUDENT_CKPT="checkpoints_full/student_final.pt"
 TEACHER_CKPT="../../vggt-unified/checkpoints/vggt_unified_fp16.pt"
-TEST_IMAGES="../../rgb_reg/*.png"
+TEST_IMAGES="rgb_reg/*.png"
 MAX_IMAGES=50
 
 # Check if checkpoints exist

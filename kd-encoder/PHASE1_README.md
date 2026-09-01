@@ -66,7 +66,7 @@ cd Terafac/vggt-KD/kd-encoder
 python evaluate_features.py \
     --student checkpoints_full/student_final.pt \
     --teacher ../../vggt-unified/checkpoints/vggt_unified_fp16.pt \
-    --images "../../rgb_reg/*.png" \
+    --images "rgb_reg/*.png" \
     --max_images 50 \
     --device cuda
 ```
