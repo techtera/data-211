@@ -84,12 +84,13 @@ class StudentFeatureExtractor(nn.Module):
             x = x.reshape(B * S, x.shape[2], x.shape[3])
 
             # CRITICAL FIX: Normalize BEFORE projection
+            # Detach BEFORE normalization: freeze encoder, but train LayerNorm
             # x shape: [B*S, Patches, 1536]
-            x_norm = self.input_norms[i](x)  # Normalize along feature dim (1536)
+            x = x.detach()  # Stop gradients to encoder
+            x_norm = self.input_norms[i](x)  # Normalize (gradients flow to LayerNorm)
 
             x_norm = x_norm.permute(0, 2, 1)  # [B*S, 1536, Patches]
             x_norm = x_norm.reshape(B * S, 1536, 37, 37)
-            x_norm = x_norm.detach()
             x_proj = self.projections[i](x_norm)
             features.append(x_proj)
 
