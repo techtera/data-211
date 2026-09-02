@@ -1,0 +1,26 @@
+graph TD
+    A[Input Images<br/>B, S, 3, 518, 518] --> B[StudentAggregator<br/>Frozen, 255M params]
+
+    B --> C1[Cached Layer 3<br/>B, S, 1374, 1536]
+    B --> C2[Cached Layer 8<br/>B, S, 1374, 1536]
+    B --> C3[Cached Layer 13<br/>B, S, 1374, 1536]
+    B --> C4[Cached Layer 17<br/>B, S, 1374, 1536]
+
+    C1 --> D1[FeatureProjection<br/>1536 → 64 @ 148x148]
+    C2 --> D2[FeatureProjection<br/>1536 → 128 @ 74x74]
+    C3 --> D3[FeatureProjection<br/>1536 → 256 @ 37x37]
+    C4 --> D4[FeatureProjection<br/>1536 → 512 @ downsampled]
+
+    D1 --> E[UNet++ Decoder<br/>Nested Skip Connections]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+
+    E --> F[x_0_3<br/>64 @ 148x148]
+    E --> G1[ds1 logits<br/>Deep Supervision]
+    E --> G2[ds2 logits<br/>Deep Supervision]
+
+    F --> H[EdgeRefinement<br/>ch=64]
+    H --> I[Conv2d 64→1]
+    I --> J[Interpolate to 518x518]
+    J --> K[Edge Logits<br/>B, 1, 518, 518]

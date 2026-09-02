@@ -1,0 +1,25 @@
+graph TD
+    A[Input Images<br/>B,S,3,518,518] --> B[ImageNet Normalization]
+    B --> C[Patch Embedding<br/>Conv2d 14x14]
+    C --> D[Patch Tokens<br/>B*S, 1369, 768]
+
+    E[Camera Token<br/>1, 2, 1, 768] --> F[Expand & Flatten]
+    G[Register Tokens<br/>1, 2, 4, 768] --> F
+    F --> H[Special Tokens<br/>B*S, 5, 768]
+
+    D --> I[Concatenate]
+    H --> I
+    I --> J[All Tokens<br/>B*S, 1374, 768]
+
+    K[RoPE 2D<br/>freq=100] --> L[Position Encoding]
+    J --> L
+
+    L --> M{18x Alternating<br/>Attention Layers}
+
+    M --> N[Frame Block<br/>Per-image attention<br/>B*S, 1374, 768]
+    N --> O[Global Block<br/>Cross-image attention<br/>B, S*1374, 768]
+    O --> M
+
+    M -->|Cached Layers<br/>3, 8, 13, 17| P[Concat Frame+Global<br/>B, S, 1374, 1536]
+    P --> Q[LayerNorm 1536]
+    Q --> R[Output Features<br/>4 layers cached]

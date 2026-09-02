@@ -1,77 +1,77 @@
 # VGGT Knowledge Distillation Pipeline
 
-Complete pipeline for distilling VGGT-1B (909M) → Student encoder (255M) and training downstream decoders.
+Distill VGGT-1B (909M) into a compact student encoder (255M) and train downstream decoders for edge and object segmentation. Designed for deployment on Jetson Orin NX 16GB with <1s latency.
 
 ## Directory Structure
 
 ```
 vggt-KD/
-├── kd-encoder/           # Knowledge distillation (ongoing: epoch 36/80)
-├── st-edge-mask/         # Edge decoder training (ready)
-└── st-obj-mask/          # Object decoder training (ready)
-```
-
-## Quick Start
-
-### Current: Wait for Student Training
-KD training is ongoing on VM. Check status: `tail -f kd-encoder/nohup.out`
-
-### Next: Train Decoders
-
-**Edge Decoder:**
-```bash
-cd st-edge-mask
-# Prepare data in data/rgb/ and data/masks/
-python fine_tune.py
-```
-
-**Object Decoder:**
-```bash
-cd st-obj-mask
-# IMPORTANT: First edit obj_mask/segformer_head.py (see st-obj-mask/README.md)
-# Prepare data in data/images/ and data/masks/
-python fine_tune.py
+├── kd-encoder/       # Knowledge distillation: teacher (909M) -> student (255M)
+├── st-edge-mask/     # Edge mask decoder training (~10M params)
+├── st-obj-mask/      # Object mask decoder training (~15M params)
+├── fastVGGT/         # Token-merging acceleration (3x faster, no retraining)
+└── test_encoder_changes.py
 ```
 
 ## Architecture
 
-**Student Encoder:** 255M params, 1536-dim output (vs VGGT-1B: 909M, 2048-dim)
-- Layers: 18 (vs 24)
-- Cached: [3,8,13,17] (vs [4,11,17,23])
-- Speed: ~3× faster
+| Component | Params | Layers | Dim  | Details |
+|-----------|--------|--------|------|---------|
+| Teacher   | 909M   | 24     | 2048 | VGGT encoder (frozen) |
+| Student   | 255M   | 18     | 1536 | DINOv2 pretrained, distilled |
+| Edge Dec  | ~10M   | -      | -    | UNet++ decoder |
+| Obj Dec   | ~15M   | -      | -    | SegFormer decoder |
 
-**Decoders:**
-- Edge: UNet++ (~10M trainable params)
-- Object: SegFormer (~15M trainable params)
+Student cached layers: `[3, 8, 13, 17]` (teacher: `[4, 11, 17, 23]`)
 
-Both adapted for 1536-dim student input.
+## Pipeline
 
-## Training Timeline
+```
+1. Train student encoder via KD    -> kd-encoder/checkpoints_full/student_final.pt
+2. Train edge decoder              -> st-edge-mask/checkpoints/checkpoint_best.pt
+3. Train object decoder            -> st-obj-mask/checkpoints/checkpoint_best.pt
+4. (Optional) Apply FastVGGT       -> 3x encoder speedup, no retraining
+5. Merge into unified checkpoint   -> deploy to Jetson Orin NX (TensorRT, INT8)
+```
 
-1. ⏳ **Student KD**: ~40-50 hours remaining → `kd-encoder/checkpoints_full/student_final.pt`
-2. ⏱️ **Edge decoder**: ~6-8 hours → `st-edge-mask/checkpoints/checkpoint_best.pt`
-3. ⏱️ **Object decoder**: ~8-10 hours → `st-obj-mask/checkpoints/checkpoint_best.pt`
+## Quick Start
 
-## Key Files
+### 1. Student Encoder (KD)
 
-- `st-edge-mask/fine_tune.py` - Train edge decoder
-- `st-obj-mask/fine_tune.py` - Train object decoder
-- `st-edge-mask/README.md` - Edge training guide
-- `st-obj-mask/README.md` - Object training guide (includes important setup step!)
+```bash
+cd kd-encoder
+torchrun --nproc_per_node=2 train_ddp.py \
+    --image_dir train_images \
+    --epochs 80 --batch_size 64 \
+    --learning_rate 1e-4 --warmup_epochs 3 \
+    --num_workers 12 --checkpoint_dir checkpoints_full
+```
 
-## Configuration
+### 2. Edge Decoder
 
-Both decoders use configs in their `fine_tuning/config.py`:
-- Batch size: 4 (adjust for your GPU)
-- Learning rate: 3e-4 (edge), 1e-4 (object)
-- Epochs: 100
+```bash
+cd st-edge-mask
+# Place images in data/rgb/, masks in data/masks/
+torchrun --nproc_per_node=2 train_ddp.py --epochs 100
+```
 
-## Next Steps After Training
+### 3. Object Decoder
 
-1. Merge both decoders into unified checkpoint
-2. Deploy to Jetson Orin NX (TensorRT, INT8)
-3. Target: <1s latency for full pipeline
+```bash
+cd st-obj-mask
+# Place images in data/images/, masks in data/masks/
+torchrun --nproc_per_node=2 train_ddp.py --epochs 100
+```
 
----
+### 4. FastVGGT (Optional)
 
-**Current Status:** Student distillation in progress (epoch 36/80, loss 0.2359)
+```bash
+cd fastVGGT
+python run_inference.py --task cascade
+```
+
+## Requirements
+
+- 2x GPU with 16GB+ VRAM (tested on 2x A100 80GB)
+- CUDA 11.8+, PyTorch 2.0+
+- `pip install torch torchvision timm pillow`

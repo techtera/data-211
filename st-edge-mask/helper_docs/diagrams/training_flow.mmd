@@ -1,0 +1,33 @@
+graph TD
+    A[RGB Images + Edge Masks] --> B[EdgeMaskDataset<br/>resize 518x518, binarize]
+    B --> C[DataLoader<br/>DistributedSampler, batch=4]
+
+    C --> D[StudentEdgeMask.forward<br/>training mode]
+    D --> E[logits + ds1_logits + ds2_logits]
+
+    E --> F[EdgeLoss]
+    F --> F1[BCE Loss × 0.5]
+    F --> F2[Dice Loss × 0.5]
+    F1 --> F3[Weighted Sum<br/>final=1.0, ds1=0.1, ds2=0.2]
+    F2 --> F3
+
+    F3 --> G[loss.backward]
+    G --> H[clip_grad_norm<br/>max_norm=1.0]
+    H --> I[optimizer.step<br/>AdamW]
+    I --> J[scheduler.step<br/>Warmup + Cosine]
+
+    J --> K{End of Epoch?}
+    K -->|No| C
+    K -->|Yes| L[Validate<br/>Precision, Recall, F1, IoU]
+
+    L --> M{F1 improved?}
+    M -->|Yes| N[Save Best Checkpoint<br/>Reset Patience]
+    M -->|No| O[Increment Patience]
+    O --> P{Patience >= 15?}
+    P -->|Yes| Q[Early Stop]
+    P -->|No| R[Save Last Checkpoint]
+    N --> R
+    R --> S{Epoch 100?}
+    S -->|No| C
+    S -->|Yes| T[Final Evaluation<br/>BF1, ODS, Dice]
+    Q --> T

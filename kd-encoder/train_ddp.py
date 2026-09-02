@@ -76,7 +76,7 @@ def train_ddp(rank, world_size, args):
         if not args.resume_from:
             initialize_student_from_dinov2_large(student, verbose=is_main_process())
 
-        # Wrap student with FeaturesOnlyWrapper then DDP (consistent with sanity_check_ddp.py)
+        # Wrap student with FeaturesOnlyWrapper then DDP
         from training.trainer import FeaturesOnlyWrapper
         student = FeaturesOnlyWrapper(student)
         student = DDP(student, device_ids=[rank], find_unused_parameters=False)

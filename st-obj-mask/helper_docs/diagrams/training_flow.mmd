@@ -1,0 +1,33 @@
+graph TD
+    A[Images + YOLO Labels] --> B[SegmentationDataset<br/>Polygon → Binary Mask<br/>Resize 518x518]
+    B --> C[DataLoader<br/>DistributedSampler<br/>batch_size=2]
+
+    C --> D[StudentObjMask.forward]
+
+    D --> E[StudentAggregator<br/>Frozen, no_grad]
+    E --> F[ObjMaskDecoder<br/>Feature Pyramid + SegFormer]
+    F --> G[Logits<br/>B, 2, 518, 518]
+
+    G --> H[CrossEntropy Loss]
+    G --> I[Dice Loss]
+    H --> J[Combined Loss<br/>CE + Dice]
+    I --> J
+
+    J --> K[loss.backward]
+    K --> L[Gradient Clip<br/>max_norm=1.0]
+    L --> M[optimizer.step<br/>AdamW]
+    M --> N[scheduler.step<br/>Warmup + Cosine]
+
+    N --> O{End of Epoch?}
+    O -->|No| C
+    O -->|Yes| P[Validate<br/>mIoU, Dice, Pixel Acc]
+
+    P --> Q{Best mIoU?}
+    Q -->|Yes| R[Save Best Checkpoint<br/>Reset Patience]
+    Q -->|No| S[Increment Patience]
+
+    S --> T{Patience >= 15?}
+    T -->|Yes| U[Early Stop]
+    T -->|No| C
+
+    R --> C

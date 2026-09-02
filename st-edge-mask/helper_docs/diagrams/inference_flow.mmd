@@ -1,0 +1,19 @@
+graph TD
+    A[Input Image<br/>3, 518, 518] --> B[Unsqueeze<br/>1, 3, 518, 518]
+    B --> C[StudentEdgeMask<br/>eval mode]
+
+    C --> D[StudentFeatureExtractor]
+    D --> D1[Frozen Aggregator<br/>no_grad]
+    D1 --> D2[4× FeatureProjection]
+
+    D2 --> E[UNet++ Decoder]
+    E --> F[EdgeRefinement]
+    F --> G[Conv2d 64→1]
+    G --> H[Interpolate 518x518]
+
+    H --> I[sigmoid]
+    I --> J[Edge Probability Map<br/>1, 518, 518]
+
+    J --> K{Apply Threshold?}
+    K -->|Yes| L[Binary Edge Mask<br/>threshold=0.5]
+    K -->|No| M[Probability Output<br/>0.0 to 1.0]

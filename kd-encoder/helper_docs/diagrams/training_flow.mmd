@@ -1,0 +1,40 @@
+graph TD
+    A[Image Directory<br/>23,687 images] --> B[ImageDataset<br/>Resize 518x518, ToTensor]
+    B --> C[DistributedSampler]
+    C --> D[DataLoader<br/>batch_size=64, num_workers=12]
+
+    D --> E[Batch: B,S,3,518,518]
+
+    E --> F[Teacher Forward<br/>909M params, frozen, FP16]
+    F --> G[Teacher Features<br/>4 cached layers at 4,11,17,23]
+    G --> H[Token Sampling<br/>1374 → 133 tokens]
+    H --> I[Teacher Sampled<br/>+ Indices saved]
+    I --> J[Delete Teacher Features<br/>Free GPU memory]
+
+    E --> K[Student Forward<br/>255M params, trainable]
+    K --> L[Student Features<br/>4 cached layers at 3,8,13,17]
+    L --> M[Token Sampling<br/>Use teacher indices]
+    M --> N[Student Sampled<br/>133 tokens aligned]
+
+    N --> O[Projection Heads<br/>4x LayerNorm+Linear<br/>1536 → 2048]
+    I --> P[Loss Computation]
+    O --> P
+
+    P --> Q[MSE Loss<br/>weight=0.7]
+    P --> R[Cosine Loss<br/>weight=0.3]
+    Q --> S[Layer Weighting<br/>1.0, 1.5, 2.0, 2.5]
+    R --> S
+    S --> T[Total Loss<br/>/ sum weights]
+
+    T --> U[Backward]
+    U --> V{Accumulation<br/>Step?}
+    V -->|Yes| W[Optimizer Step<br/>AdamW]
+    W --> X[Scheduler Step<br/>Cosine + Warmup]
+    V -->|No| Y[Accumulate<br/>Gradients]
+
+    X --> Z{Epoch Done?}
+    Z -->|Yes| AA[Save Checkpoints<br/>last, best, periodic]
+    Z -->|No| D
+    AA --> AB{All Epochs<br/>Done?}
+    AB -->|Yes| AC[Save student_final.pt]
+    AB -->|No| D

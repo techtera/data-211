@@ -28,9 +28,10 @@ from obj_mask.model import StudentObjMask
 from fine_tuning.config import *
 from fine_tuning.ddp_utils import setup_ddp, cleanup_ddp, is_main_process, get_rank
 from fine_tuning.checkpoints import save_checkpoint
+from fine_tuning.scheduler import build_scheduler
 
 
-def train_epoch_ddp(model, criterion, optimizer, dataloader, device, epoch):
+def train_epoch_ddp(model, criterion, optimizer, scheduler, dataloader, device, epoch):
     """Train one epoch with DDP."""
     import time
 
@@ -53,9 +54,10 @@ def train_epoch_ddp(model, criterion, optimizer, dataloader, device, epoch):
         loss.backward()
 
         # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP_MAX_NORM)
 
         optimizer.step()
+        scheduler.step()
 
         epoch_loss += loss.item()
 
@@ -231,6 +233,8 @@ def train_ddp(rank, world_size, args):
 
         criterion = build_loss()
         optimizer = build_optimizer(model)
+        total_steps = NUM_EPOCHS * len(train_loader)
+        scheduler, warmup_steps = build_scheduler(optimizer, total_steps)
 
         # Training loop
         if is_main_process():
@@ -240,6 +244,7 @@ def train_ddp(rank, world_size, args):
         import time
         best_val_loss = float('inf')
         best_val_miou = 0.0
+        patience_counter = 0
         training_start = time.time()
 
         for epoch in range(NUM_EPOCHS):
@@ -252,7 +257,7 @@ def train_ddp(rank, world_size, args):
 
             # Train
             train_loss = train_epoch_ddp(
-                model, criterion, optimizer,
+                model, criterion, optimizer, scheduler,
                 train_loader, device, epoch
             )
 
@@ -289,7 +294,7 @@ def train_ddp(rank, world_size, args):
                     save_checkpoint(
                         model=model.module,  # Unwrap DDP
                         optimizer=optimizer,
-                        scheduler=None,
+                        scheduler=scheduler,
                         epoch=epoch + 1,
                         loss=val_loss,
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_last.pt")
@@ -298,15 +303,19 @@ def train_ddp(rank, world_size, args):
                 # Save best based on mIoU (higher is better)
                 if SAVE_BEST and val_miou > best_val_miou:
                     best_val_miou = val_miou
+                    patience_counter = 0
                     save_checkpoint(
                         model=model.module,
                         optimizer=optimizer,
-                        scheduler=None,
+                        scheduler=scheduler,
                         epoch=epoch + 1,
                         loss=val_loss,
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best.pt")
                     )
                     print(f"  ✓ New best checkpoint! Val mIoU: {best_val_miou:.4f} (Loss: {val_loss:.4f})")
+                else:
+                    patience_counter += 1
+                    print(f"  No improvement. Patience: {patience_counter}/{PATIENCE}")
 
                 # Also save best loss checkpoint
                 if val_loss < best_val_loss:
@@ -314,11 +323,18 @@ def train_ddp(rank, world_size, args):
                     save_checkpoint(
                         model=model.module,
                         optimizer=optimizer,
-                        scheduler=None,
+                        scheduler=scheduler,
                         epoch=epoch + 1,
                         loss=val_loss,
                         save_path=os.path.join(CHECKPOINT_DIR, "checkpoint_best_loss.pt")
                     )
+
+                # Early stopping check
+                if patience_counter >= PATIENCE:
+                    print(f"\n⚠️  Early stopping at epoch {epoch+1} (no improvement for {PATIENCE} epochs)")
+                    print(f"  Best Val mIoU: {best_val_miou:.4f}")
+                    print(f"  Best Val Loss: {best_val_loss:.4f}")
+                    break
 
         if is_main_process():
             print("\n" + "="*60)
