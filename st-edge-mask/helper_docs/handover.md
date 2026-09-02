@@ -40,7 +40,7 @@ Train the edge mask decoder using the distilled student encoder (255M params). T
 
 ## Known Issues
 
-- Checkpoint path was wrong (referenced checkpoints_full/ which doesn't exist) — fixed to ../kd-encoder/checkpoints/student_final.pt
+- Checkpoint path was wrong (referenced checkpoints_full/ which doesn't exist) — fixed to ../kd-encoder/checkpoints_v2/student_final.pt
 - No data augmentation in current pipeline (may limit generalization)
 - Validation keeps model in training mode to get 3 outputs for deep supervision loss computation (torch.no_grad() prevents gradient computation but BatchNorm/Dropout behavior differs)
 - Single-frame training only (S=1)

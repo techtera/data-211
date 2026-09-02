@@ -58,7 +58,7 @@ Binary Mask [B, 518, 518]
 ### DDP Training Setup (per GPU)
 
 1. `setup_ddp(rank, world_size)` — init NCCL process group
-2. Load student encoder from `../kd-encoder/checkpoints/student_final.pt`
+2. Load student encoder from `../kd-encoder/checkpoints_v2/student_final.pt`
    - Create `StudentAggregator()`, load state_dict
    - Set eval mode, freeze all parameters
 3. Build `StudentObjMask(student_aggregator)` → move to device
@@ -97,7 +97,7 @@ After training completes:
 
 ### Failure Points
 
-- Student checkpoint not found at `../kd-encoder/checkpoints/student_final.pt`
+- Student checkpoint not found at `../kd-encoder/checkpoints_v2/student_final.pt`
 - Dataset `data/` directory missing or empty
 - OOM with batch_size > 2 on smaller GPUs
 - NCCL timeout during DDP init

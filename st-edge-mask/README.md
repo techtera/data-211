@@ -22,7 +22,7 @@ mkdir -p data/rgb data/masks
 # Masks:  data/masks/*_mask.png (518x518, binary 0/255)
 
 # 2. Verify student checkpoint exists
-ls ../kd-encoder/checkpoints/student_final.pt
+ls ../kd-encoder/checkpoints_v2/student_final.pt
 
 # 3. Train (multi-GPU recommended)
 torchrun --nproc_per_node=2 train_ddp.py --epochs 100

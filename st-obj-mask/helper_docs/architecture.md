@@ -47,7 +47,7 @@ Object mask segmentation system using a distilled student encoder (255M params) 
 ## External Dependencies
 
 - PyTorch 2.0+ with CUDA
-- Student encoder checkpoint from `../kd-encoder/checkpoints/student_final.pt`
+- Student encoder checkpoint from `../kd-encoder/checkpoints_v2/student_final.pt`
 - OpenCV (cv2) for mask polygon rasterization in dataset
 
 ## Interfaces

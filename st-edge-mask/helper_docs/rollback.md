@@ -12,7 +12,7 @@
 **Rollback Procedure**:
 ```bash
 # Revert to old path if needed
-sed -i 's|../kd-encoder/checkpoints/student_final.pt|../kd-encoder/checkpoints_full/student_final.pt|g' \
+sed -i 's|../kd-encoder/checkpoints_v2/student_final.pt|../kd-encoder/checkpoints_full/student_final.pt|g' \
   fine_tuning/config.py infer_standalone.py README.md
 ```
 

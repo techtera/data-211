@@ -59,6 +59,7 @@ def load_existing_log(csv_path):
 
 
 def append_to_csv(csv_path, epoch, loss, timestamp):
+    Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
     write_header = not os.path.exists(csv_path)
     with open(csv_path, "a", newline="") as f:
         writer = csv.writer(f)

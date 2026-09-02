@@ -14,7 +14,7 @@ Usage:
     python infer_standalone.py input_dir/ output_dir/ --batch --overlay
 
 Checkpoints:
-    - Encoder: ../kd-encoder/checkpoints/student_final.pt
+    - Encoder: ../kd-encoder/checkpoints_v2/student_final.pt
     - Decoder: checkpoints/checkpoint_best.pt
 """
 
@@ -953,7 +953,7 @@ class StudentObjMask(nn.Module):
 # ============================================================================
 
 def load_checkpoint(
-    encoder_path: str = '../kd-encoder/checkpoints/student_final.pt',
+    encoder_path: str = '../kd-encoder/checkpoints_v2/student_final.pt',
     decoder_path: str = 'checkpoints/checkpoint_best.pt',
     device: str = 'cuda'
 ) -> Tuple[StudentObjMask, torch.device]:
@@ -1054,7 +1054,7 @@ Examples:
     )
     parser.add_argument('input', help='Input image path or directory')
     parser.add_argument('output', help='Output mask path or directory')
-    parser.add_argument('--encoder', default='../kd-encoder/checkpoints/student_final.pt',
+    parser.add_argument('--encoder', default='../kd-encoder/checkpoints_v2/student_final.pt',
                         help='Path to encoder checkpoint')
     parser.add_argument('--decoder', default='checkpoints/checkpoint_best.pt',
                         help='Path to decoder checkpoint')

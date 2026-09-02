@@ -83,7 +83,7 @@
 
 ### Checkpoint Locations
 
-- **Student Encoder**: `../kd-encoder/checkpoints/student_final.pt`
+- **Student Encoder**: `../kd-encoder/checkpoints_v2/student_final.pt`
 - **Best Decoder (mIoU)**: `checkpoints/checkpoint_best.pt`
 - **Best Decoder (loss)**: `checkpoints/checkpoint_best_loss.pt`
 - **Latest Decoder**: `checkpoints/checkpoint_last.pt`

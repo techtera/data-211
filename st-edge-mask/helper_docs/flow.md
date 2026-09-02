@@ -81,7 +81,7 @@ Compute Final Metrics:
 ### DDP Training Setup (per GPU)
 
 1. `setup_ddp(rank, world_size)` — init NCCL process group
-2. Load student encoder checkpoint from `../kd-encoder/checkpoints/student_final.pt`
+2. Load student encoder checkpoint from `../kd-encoder/checkpoints_v2/student_final.pt`
    - Extract `student_state_dict` from checkpoint
    - Create `StudentAggregator()`, load weights, freeze, eval mode
 3. Build `StudentEdgeMask(student_aggregator)` → `.to(device)`
@@ -123,7 +123,7 @@ Per step:
 
 ### Failure Points
 
-- Student checkpoint not found at `../kd-encoder/checkpoints/student_final.pt`
+- Student checkpoint not found at `../kd-encoder/checkpoints_v2/student_final.pt`
 - `data/` directory missing or empty
 - Mask naming mismatch (must be `{stem}_mask.{ext}`)
 - OOM: frozen encoder + decoder + gradients can be tight at batch_size=4

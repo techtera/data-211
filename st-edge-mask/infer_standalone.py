@@ -963,7 +963,7 @@ def main():
     parser.add_argument(
         "--encoder-checkpoint",
         type=str,
-        default="../kd-encoder/checkpoints/student_final.pt",
+        default="../kd-encoder/checkpoints_v2/student_final.pt",
         help="Path to student encoder checkpoint"
     )
     parser.add_argument(

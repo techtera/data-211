@@ -27,7 +27,7 @@
 
 ## 2026-09-02 — Fixed Checkpoint Path
 
-**Change**: Changed STUDENT_CHECKPOINT from `../kd-encoder/checkpoints_full/student_final.pt` to `../kd-encoder/checkpoints/student_final.pt` in config.py and inference scripts.
+**Change**: Changed STUDENT_CHECKPOINT from `../kd-encoder/checkpoints_full/student_final.pt` to `../kd-encoder/checkpoints_v2/student_final.pt` in config.py and inference scripts.
 
 **Affected Files**:
 - `fine_tuning/config.py`

@@ -47,7 +47,7 @@ Edge mask prediction system using a distilled student encoder (255M params, froz
 ## External Dependencies
 
 - PyTorch 2.0+ with CUDA 11.8+
-- Student encoder checkpoint from `../kd-encoder/checkpoints/student_final.pt`
+- Student encoder checkpoint from `../kd-encoder/checkpoints_v2/student_final.pt`
 - StudentAggregator class from `../kd-encoder/student/`
 
 ## Interfaces

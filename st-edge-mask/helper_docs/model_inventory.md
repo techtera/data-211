@@ -92,7 +92,7 @@ End-to-end edge mask prediction model combining a frozen distilled student encod
 - **Latest**: `checkpoints/checkpoint_last.pt`
 - **Best F1**: `checkpoints/checkpoint_best.pt`
 - **Best Loss**: `checkpoints/checkpoint_best_loss.pt`
-- **Student encoder**: `../kd-encoder/checkpoints/student_final.pt`
+- **Student encoder**: `../kd-encoder/checkpoints_v2/student_final.pt`
 
 ### Known Limitations
 

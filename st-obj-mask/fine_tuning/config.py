@@ -2,7 +2,7 @@
 
 import torch
 
-STUDENT_CHECKPOINT = "../kd-encoder/checkpoints/student_final.pt"
+STUDENT_CHECKPOINT = "../kd-encoder/checkpoints_v2/student_final.pt"
 
 IMAGE_SIZE = 518
 NUM_CLASSES = 2
