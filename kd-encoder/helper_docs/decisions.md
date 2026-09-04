@@ -91,3 +91,50 @@
 - DDP — more efficient, better scaling, standard practice
 
 **Reasoning**: DDP is strictly better for multi-GPU: one process per GPU, no GIL contention, gradient reduction is overlapped with backward pass.
+
+---
+
+## 2026-09-04 — Fix Cosine Similarity: Per-Token Instead of Per-Sample
+
+**Decision**: Change cosine similarity from `flatten(1) + cosine_similarity(dim=-1)` to `cosine_similarity(dim=-1)` directly on `[B,S,P,C]` tensors.
+
+**Context**: Loss plateaued at ~0.128-0.133 from epoch 22-41, with best 0.111 at epoch 18. The 30% cosine loss component was providing near-zero gradients.
+
+**Alternatives Considered**:
+- Keep flatten, reduce cosine weight — doesn't fix the root cause
+- Switch to CKA loss — computationally expensive, unnecessary
+- Remove cosine entirely, use only MSE — loses directional alignment
+
+**Reasoning**: `flatten(1)` on `[B,1,133,2048]` creates a 272K-dim vector per sample. In such high dimensions, cosine similarity saturates near 1.0, making the gradient vanish. Per-token cosine on `dim=-1` (2048-dim) gives 133 independent gradient signals per sample per layer — much more informative.
+
+**Tradeoffs**: Loss values after this change are not directly comparable to pre-fix epochs. Should resume from a known-good checkpoint.
+
+**Expected Impact**: Break the loss plateau; cosine loss will now contribute meaningful gradients throughout training.
+
+**Risks**: Initial loss may spike as the cosine term provides stronger gradients. Gradient clipping (also added) mitigates this.
+
+**Model Used**: Claude Opus 4.6
+
+---
+
+## 2026-09-04 — Add Gradient Clipping (max_norm=1.0)
+
+**Decision**: Add `clip_grad_norm_(student.parameters(), max_norm=1.0)` before each optimizer step.
+
+**Context**: Loss oscillations of +/- 0.002 between consecutive epochs, especially with random token sampling introducing gradient variance.
+
+**Reasoning**: Without clipping, occasional large gradients from unlucky token samples can push parameters past optimal values, causing the zig-zag pattern visible in epochs 22-41. Standard practice for transformer training.
+
+**Model Used**: Claude Opus 4.6
+
+---
+
+## 2026-09-04 — Remove Per-Step empty_cache(), Keep Periodic
+
+**Decision**: Remove `torch.cuda.empty_cache()` after every teacher forward pass. Keep existing call every 100 steps.
+
+**Context**: OOM crash at step 1195 despite 357MB reserved-but-unallocated. Per-step empty_cache forces CUDA allocator to release cached blocks, preventing efficient reuse and increasing fragmentation.
+
+**Reasoning**: `empty_cache()` is meant for periodic cleanup, not per-step use. Calling it every step forces constant defragmentation, which paradoxically increases OOM risk by preventing the allocator from maintaining a stable memory pool.
+
+**Model Used**: Claude Opus 4.6

@@ -405,7 +405,6 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
 
             # Clear teacher features
             del teacher_features_all, teacher_features
-            torch.cuda.empty_cache()
 
         # Forward student
         student_features_all = student(images)  # DDP(FeaturesOnlyWrapper) returns list directly
@@ -430,6 +429,7 @@ def train_epoch_ddp(teacher, student, loss_fn, optimizer, scheduler, dataloader,
 
         # Only update weights every accumulation_steps
         if (step + 1) % accumulation_steps == 0:
+            torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=1.0)
             optimizer.step()
             optimizer.zero_grad()
             scheduler.step()

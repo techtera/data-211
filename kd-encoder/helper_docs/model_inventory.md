@@ -78,10 +78,12 @@
 
 ## Checkpoint Locations
 
-- `checkpoints/checkpoint_last.pt` — Latest epoch (resume training)
-- `checkpoints/checkpoint_best.pt` — Lowest validation loss
-- `checkpoints/student_final.pt` — Final model (state_dict only, no optimizer)
-- `checkpoints_full/checkpoint_epoch_36.pt` — Known good checkpoint (score 1.49)
+- `checkpoints_v2/checkpoint_last.pt` — Latest epoch, current run (resume training)
+- `checkpoints_v2/checkpoint_best.pt` — Lowest loss, current run
+- `checkpoints_v2/student_final.pt` — Final model (state_dict only, saved at end of training)
+- `checkpoints_full/student_final.pt` — Previous run final model (epoch 36, score 1.49)
+- `checkpoints_full/checkpoint_last.pt` — Previous run last checkpoint
+- `checkpoints_full/checkpoint_best.pt` — Previous run best checkpoint
 
 ## Known Limitations
 

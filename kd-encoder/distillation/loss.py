@@ -87,10 +87,8 @@ class DistillationLoss(nn.Module):
             # MSE loss (magnitude matching)
             mse_loss = F.mse_loss(s_feat_proj, t_feat)
 
-            # Cosine loss (direction matching)
-            s_flat = s_feat_proj.flatten(1)
-            t_flat = t_feat.flatten(1)
-            cos_sim = F.cosine_similarity(s_flat, t_flat, dim=-1).mean()
+            # Cosine loss (per-token direction matching along feature dim)
+            cos_sim = F.cosine_similarity(s_feat_proj, t_feat, dim=-1).mean()
             cosine_loss = 1.0 - cos_sim
 
             # Weighted combination
@@ -146,11 +144,9 @@ class SimplifiedDistillationLoss(nn.Module):
             s_feat = student_features[i]
             t_feat = teacher_features[i]
 
-            # MSE + Cosine
+            # MSE + Cosine (per-token direction matching)
             mse_loss = F.mse_loss(s_feat, t_feat)
-            s_flat = s_feat.flatten(1)
-            t_flat = t_feat.flatten(1)
-            cos_sim = F.cosine_similarity(s_flat, t_flat, dim=-1).mean()
+            cos_sim = F.cosine_similarity(s_feat, t_feat, dim=-1).mean()
             cosine_loss = 1.0 - cos_sim
 
             layer_loss = self.mse_weight * mse_loss + self.cosine_weight * cosine_loss
